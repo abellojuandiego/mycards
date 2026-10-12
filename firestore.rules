@@ -1,0 +1,114 @@
+rules_version = '2';
+// Reglas de seguridad de MyCards.
+// Pégalas en Firebase → Firestore Database → Reglas → Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function verified() { return request.auth.token.email_verified == true; }
+    function email() { return request.auth.token.email.lower(); }
+    function deckData(deckId) { return get(/databases/$(database)/documents/decks/$(deckId)).data; }
+    function invited(d) { return verified() && email() in d.sharedWith; }
+
+    // Ver un mazo: dueño, invitado, o mazo abierto con número de serie / público.
+    function canRead(d) {
+      return d.owner == me() || d.visibility in ['link', 'public'] || invited(d);
+    }
+    // Editar tarjetas: dueño, editor elegido, o "cualquiera puede editar" en un mazo abierto.
+    function canEdit(d) {
+      return d.owner == me()
+        || (d.visibility in ['link', 'public'] && d.anyoneCanEdit == true)
+        || (verified() && email() in d.editorEmails);
+    }
+
+    function validDeck(d) {
+      return d.keys().hasOnly(['name', 'description', 'owner', 'ownerName', 'code', 'visibility', 'anyoneCanEdit',
+                               'sharedWith', 'editorEmails', 'cardCount', 'qCount', 'topics', 'created', 'updated'])
+        && d.keys().hasAll(['name', 'owner', 'code', 'visibility', 'anyoneCanEdit', 'sharedWith', 'editorEmails', 'cardCount'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.code is string && d.code.size() == 8
+        && (!('description' in d) || (d.description is string && d.description.size() <= 1000))
+        && (!('ownerName' in d) || (d.ownerName is string && d.ownerName.size() <= 120))
+        && (!('topics' in d) || (d.topics is map && d.topics.size() <= 300))
+        && d.visibility in ['private', 'link', 'public']
+        && d.anyoneCanEdit is bool
+        && d.sharedWith is list && d.sharedWith.size() <= 200
+        && d.editorEmails is list && d.editorEmails.size() <= 200
+        && d.cardCount is int;
+    }
+
+    function validCard(c) {
+      return c.keys().hasOnly(['q', 'a', 'img', 'ch', 'type', 'o', 'k', 'e', 'created', 'updated', 'by'])
+        && c.q is string && c.q.size() > 0 && c.q.size() <= 5000
+        && (!('a' in c) || (c.a is string && c.a.size() <= 20000))
+        && (!('img' in c) || (c.img is list && c.img.size() <= 12))
+        && (!('ch' in c) || c.ch == null || (c.ch is int && c.ch >= 0 && c.ch <= 100000))
+        && (!('type' in c) || c.type == 'mcq')
+        && (!('o' in c) || (c.o is list && c.o.size() >= 2 && c.o.size() <= 8))
+        && (!('k' in c) || (c.k is int && c.k >= 0 && c.k < 8))
+        && (!('e' in c) || (c.e is string && c.e.size() <= 5000))
+        && c.by == me();
+    }
+
+    // ---------- Datos personales: sólo su dueño ----------
+    match /users/{uid}/{rest=**} {
+      allow read, write: if signedIn() && me() == uid;
+    }
+    match /users/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+    }
+
+    // ---------- Números de serie (únicos: no se pueden sobrescribir) ----------
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && code.size() == 8
+        && request.resource.data.keys().hasOnly(['deck', 'owner', 'created'])
+        && request.resource.data.owner == me()
+        && request.resource.data.deck is string
+        && getAfter(/databases/$(database)/documents/decks/$(request.resource.data.deck)).data.code == code;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.owner == me();
+    }
+
+    // ---------- Mazos ----------
+    match /decks/{deckId} {
+      allow get: if signedIn() && canRead(resource.data);
+      // Las listas sólo devuelven tus mazos, los compartidos contigo y los públicos (no los "con número de serie").
+      allow list: if signedIn() && (resource.data.owner == me() || resource.data.visibility == 'public' || invited(resource.data));
+      allow create: if signedIn() && request.resource.data.owner == me() && validDeck(request.resource.data)
+        && getAfter(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.deck == deckId;
+      allow update: if signedIn() && (
+          (resource.data.owner == me() && request.resource.data.owner == me()
+            && request.resource.data.code == resource.data.code && validDeck(request.resource.data))
+          || (canEdit(resource.data)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cardCount', 'qCount', 'topics', 'updated'])
+              && request.resource.data.cardCount is int && request.resource.data.cardCount >= 0
+              && (!('topics' in request.resource.data) || (request.resource.data.topics is map && request.resource.data.topics.size() <= 300)))
+        );
+      allow delete: if signedIn() && resource.data.owner == me();
+
+      match /cards/{cardId} {
+        allow read: if signedIn() && canRead(deckData(deckId));
+        allow create, update: if signedIn() && canEdit(deckData(deckId)) && validCard(request.resource.data);
+        allow delete: if signedIn() && canEdit(deckData(deckId));
+      }
+    }
+
+    // ---------- Imágenes (guardadas comprimidas dentro de Firestore) ----------
+    // Se leen sólo con su identificador aleatorio, que sólo aparece en las tarjetas; no se pueden listar.
+    match /images/{imageId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.owner == me()
+        && request.resource.data.keys().hasOnly(['owner', 'data', 'w', 'h', 'bytes', 'created'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 980000;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.owner == me();
+    }
+  }
+}
