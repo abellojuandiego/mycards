@@ -104,6 +104,71 @@ Las reglas son las que protegen la app. Garantizan que:
 4. También se importan tus otros mazos.
 5. Si quieres que tus compañeros lo usen, cámbialo en **Compartir** a "Con número de serie" y pásales el número.
 
+## 10. Dominio propio: mycardsapp.com
+
+Con estos pasos MyCards pasa a abrirse en `https://mycardsapp.com`. El enlace viejo (`abellojuandiego.github.io/mycards`) redirige solo a la nueva dirección. Los mazos, el progreso y las cuentas siguen intactos porque viven en Firebase. El código no cambia. Calcula unos 30 minutos de trabajo, más la espera de los DNS (de minutos a unas horas).
+
+### 10.1 Comprar el dominio
+
+1. Cómpralo en un registrador que cobre lo mismo al renovar que el primer año. Por ejemplo:
+   - **Cloudflare Registrar** (<https://dash.cloudflare.com>, Domain Registration → Register Domains), a precio de costo;
+   - **Porkbun** (<https://porkbun.com>).
+   - Un `.com` cuesta cerca de 10 USD al año. Mira el precio de **renovación**, no el de promoción.
+2. Busca `mycardsapp.com`. Si aparece como disponible, cómpralo. Activa la **renovación automática** y la **protección de privacidad WHOIS** (suele ser gratis).
+3. Si ya está ocupado, avísale a Claude y eligen otro nombre. Ningún paso de abajo depende de que sea ese nombre exacto.
+
+### 10.2 Verificar el dominio en GitHub (protege contra robos del dominio)
+
+1. En GitHub, tu foto (arriba a la derecha) → **Settings → Pages** (el de tu *perfil*, no el del repositorio) → **Add a domain**.
+2. Escribe `mycardsapp.com` y pulsa **Add domain**. GitHub te muestra un registro **TXT** con un nombre como `_github-pages-challenge-abellojuandiego` y un valor largo.
+3. Crea ese registro TXT en el panel DNS del registrador (paso 10.3) y vuelve a pulsar **Verify**. Puede tardar unos minutos en aparecer.
+
+### 10.3 Crear los registros DNS
+
+En el registrador abre **DNS** de `mycardsapp.com`. Borra los registros A, AAAA o CNAME de "parking" que traiga por defecto para `@` y `www` y crea estos:
+
+| Tipo | Nombre | Valor |
+| --- | --- | --- |
+| A | `@` | `185.199.108.153` |
+| A | `@` | `185.199.109.153` |
+| A | `@` | `185.199.110.153` |
+| A | `@` | `185.199.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153` |
+| AAAA | `@` | `2606:50c0:8001::153` |
+| AAAA | `@` | `2606:50c0:8002::153` |
+| AAAA | `@` | `2606:50c0:8003::153` |
+| CNAME | `www` | `abellojuandiego.github.io` |
+| TXT | (el que dio GitHub en 10.2) | (el valor que dio GitHub) |
+
+- Los AAAA son opcionales, pero conviene ponerlos.
+- El CNAME de `www` apunta a `abellojuandiego.github.io` **sin** `/mycards`.
+- **Si usas Cloudflare:** cada registro A, AAAA y CNAME debe quedar con la nube **gris (DNS only)**, no naranja. Con la nube naranja GitHub no puede emitir el certificado HTTPS.
+
+### 10.4 Conectar el dominio en el repositorio
+
+1. En GitHub abre el repositorio `mycards` → **Settings → Pages → Custom domain**.
+2. Escribe `mycardsapp.com` y pulsa **Save**.
+   - GitHub crea solo un archivo `CNAME` en el repositorio. No lo crees ni lo borres a mano.
+   - **Importante:** antes del siguiente cambio, en GitHub Desktop pulsa **Fetch origin → Pull origin** para traer ese archivo. Si no, el siguiente Push puede fallar.
+3. Espera a que aparezca "DNS check successful". Luego marca **Enforce HTTPS**; esa casilla puede tardar hasta 24 horas en activarse.
+
+### 10.5 Autorizar el dominio en Firebase
+
+1. Firebase → **Authentication → Configuración → Dominios autorizados → Agregar dominio**.
+2. Agrega `mycardsapp.com` y luego `www.mycardsapp.com` (sin `https://`).
+3. Deja también `abellojuandiego.github.io`. No estorba.
+
+Sin este paso, el botón "Entrar con Google" falla en el dominio nuevo.
+
+### 10.6 Pasar tus dispositivos a la dirección nueva
+
+Cada dirección web guarda su propia sesión y su propia copia sin conexión, así que en cada dispositivo:
+
+1. Abre la app vieja **con internet** para que se sincronice cualquier cambio pendiente.
+2. Abre `https://mycardsapp.com` y entra con tu cuenta. Todo tu progreso aparece igual.
+3. Borra el icono viejo de la pantalla de inicio e **instala de nuevo** desde la dirección nueva (paso 8.2).
+4. A partir de ahora comparte con tus compañeros los enlaces de `mycardsapp.com`. Los enlaces viejos de mazos también siguen funcionando porque redirigen.
+
 ---
 
 ## Números de serie y cómo se comparte un mazo
@@ -157,10 +222,11 @@ Esto alcanza de sobra para ti y un grupo de compañeros. Las imágenes se guarda
 
 ## Actualizaciones futuras
 
-Cuando quieras un cambio, pídeselo a Claude como hasta ahora. Hay dos formas de aplicarlo:
+Cuando quieras un cambio, pídeselo a Claude como hasta ahora. Hay tres formas de aplicarlo:
 
-- **Opción A, la más simple:** Claude te entrega los archivos modificados. En GitHub abre cada uno, pulsa el lápiz o **Add file → Upload files** para reemplazarlo y luego **Commit changes**. En 1-2 minutos la app se actualiza sola para todos.
-- **Opción B, la más cómoda:** conecta tu cuenta de GitHub a Claude. Así Claude puede subir los cambios directamente al repositorio `mycards` y tú sólo revisas.
+- **Opción A, la que usas ahora:** con la carpeta `Documents/GitHub/mycards` conectada a Claude desde la app de escritorio, Claude escribe los cambios directamente en tu carpeta. Tú abres **GitHub Desktop**, revisas los cambios, escribes un resumen, pulsas **Commit to main** y luego **Push origin**. En 1-2 minutos la app se actualiza sola para todos.
+- **Opción B, la más simple:** Claude te entrega los archivos modificados. En GitHub abre cada uno, pulsa el lápiz o **Add file → Upload files** para reemplazarlo y luego **Commit changes**.
+- **Opción C, la más cómoda:** conecta tu cuenta de GitHub a Claude. Así Claude puede subir los cambios directamente al repositorio `mycards` y tú sólo revisas.
 
 Si ya subiste la versión anterior ("Repaso ORL"), reemplaza todos los archivos, borra `js/bank.js` y vuelve a pegar las reglas. Como las cuentas ahora empiezan en cero, importa de nuevo el archivo exportado desde Claude.
 
