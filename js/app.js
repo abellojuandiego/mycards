@@ -345,13 +345,12 @@ function rateButtons(card, onRate) {
 function welcome() {
   return el('div', { class: 'card welcome' },
     el('div', { class: 'q', text: 'Bienvenido a MyCards' }),
-    el('p', { text: 'Tu cuenta empieza sin mazos. Crea el primero, agrega uno con su número de serie, sube un archivo (Excel, CSV, Quizlet, Anki en texto o JSON) o trae lo que ya tienes en la app de Claude.' }),
+    el('p', { text: 'Tu cuenta empieza sin mazos. Crea el primero, agrega uno con su número de serie o sube un archivo (Excel, CSV, Quizlet, Anki o JSON).' }),
     el('div', { class: 'btnrow' },
       el('button', { class: 'b primary', onclick: () => { DK.creating = true; DK.adding = false; renderDecks(); setTimeout(() => { const i = $('new-deck'); if (i) i.focus(); }, 0); } }, 'Crear un mazo'),
       el('button', { class: 'b', onclick: () => { DK.adding = true; DK.creating = false; renderDecks(); setTimeout(() => { const i = $('code-in'); if (i) i.focus(); }, 0); } }, 'Agregar con número de serie'),
       el('button', { class: 'b', onclick: () => openImport() }, 'Importar un archivo'),
-      el('button', { class: 'b', onclick: () => setMode('explore') }, 'Explorar mazos públicos'),
-      el('button', { class: 'b', onclick: () => setMode('account') }, 'Importar desde la app de Claude')));
+      el('button', { class: 'b', onclick: () => setMode('explore') }, 'Explorar mazos públicos')));
 }
 function fmtWhen(t) { const m = Math.round((t - Date.now()) / MIN); if (m < 60) return 'en ' + Math.max(1, m) + ' min'; const h = Math.round(m / 60); if (h < 20) return 'en ' + h + ' h'; return new Date(t).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' }); }
 function renderCards() {
@@ -610,8 +609,8 @@ function renderDecks() {
 
 // ---------- importar y exportar mazos como archivo ----------
 const IM = { open: false, parsing: false, res: null, file: null, err: '', vis: 'private', busy: '' };
-function openImport() { IM.open = true; IM.res = null; IM.err = ''; IM.busy = ''; DK.creating = false; DK.adding = false; if (mode !== 'decks') setMode('decks'); else renderDecks(); scrollTo({ top: 0 }); }
-function closeImport() { if (IM.busy) return; IM.open = false; IM.res = null; IM.err = ''; render(); }
+function openImport() { AC.imp = null; IM.open = true; IM.res = null; IM.err = ''; IM.busy = ''; DK.creating = false; DK.adding = false; if (mode !== 'decks') setMode('decks'); else renderDecks(); scrollTo({ top: 0 }); }
+function closeImport() { if (IM.busy || (AC.imp && AC.imp.busy)) return; IM.open = false; IM.res = null; IM.err = ''; AC.imp = null; render(); }
 let xlsxLib = null;
 function loadXLSX() { // la librería de Excel (≈ 900 KB) sólo se descarga si alguien sube un .xlsx
   if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -624,7 +623,7 @@ async function pickImportFile(file) {
   try {
     const r = await IMP.parseFile(file, { loadXLSX, onProgress: t => { IM.parseMsg = t; if (IM.parsing) renderDecks(); } });
     IM.parsing = false;
-    if (r.format === 'claude-app') { IM.open = false; setMode('account'); readImport(file); return; }
+    if (r.format === 'claude-app') { readImport(file); return; }
     if (r.unsupported) { IM.err = r.unsupported; renderDecks(); return; }
     const usable = r.decks.filter(d => d.cards.length || d.questions.length);
     if (!usable.length) { IM.err = (r.decks[0] && r.decks[0].warnings[0]) || 'No encontré tarjetas en ese archivo.'; renderDecks(); return; }
@@ -642,6 +641,7 @@ function importPanel() {
   const fi = el('input', { type: 'file', accept: '.csv,.tsv,.txt,.json,.xlsx,.xls,.ods,.apkg,text/csv,text/plain,application/json', hidden: true, id: 'imp-deck-file' });
   fi.addEventListener('change', () => { const f = fi.files[0]; fi.value = ''; pickImportFile(f); });
   box.append(fi);
+  if (AC.imp) return claudeImportBox();
   if (IM.parsing) { box.append(el('p', { class: 'note', style: 'font-size:14px', text: IM.parseMsg || 'Leyendo ' + (IM.file ? '“' + IM.file.name + '”' : 'el archivo') + '…' })); return box; }
   if (!IM.res) {
     box.append(el('h3', { class: 'sec', style: 'margin:0', text: 'Importar un mazo desde un archivo' }),
@@ -650,7 +650,7 @@ function importPanel() {
         el('li', { text: 'Excel o Google Sheets (.xlsx o .csv): una fila por tarjeta, con columnas “pregunta”, “respuesta” y, si quieres, “tema”. Si el libro tiene varias hojas, cada hoja queda como un tema.' }),
         el('li', { text: 'Quizlet: en el set, ⋯ → Exportar, copia el texto y guárdalo como archivo .txt.' }),
         el('li', { text: 'Anki (.apkg): el mazo tal cual, con sus imágenes. Los submazos quedan como temas y cada tarjeta se arma con las plantillas del mazo (básicas, invertidas y cloze). También sirve “Notas en texto plano (.txt)”.' }),
-        el('li', { text: 'JSON de MyCards: el que descargas con “Exportar” en cualquier mazo, o el que te prepare Claude con las instrucciones de abajo.' })));
+        el('li', { text: 'JSON de MyCards: el que descargas con “Exportar” en cualquier mazo, o el que te prepare Claude con las instrucciones de abajo. También reconoce el archivo “Exportar para la web” de la app Repaso de Laringología.' })));
     const dz = el('div', { class: 'dropzone' }, el('button', { class: 'b primary', type: 'button', onclick: () => fi.click() }, 'Elegir archivo'),
       el('span', { class: 'note', text: 'En el computador también puedes arrastrar el archivo aquí.' }));
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
@@ -705,6 +705,20 @@ function importPanel() {
     el('button', { class: 'b', disabled: IM.busy ? true : null, onclick: () => fi.click() }, 'Elegir otro archivo'),
     el('button', { class: 'b', disabled: IM.busy ? true : null, onclick: closeImport }, 'Cancelar')));
   return box;
+}
+// Archivo exportado de la app de Claude (Repaso de Laringología): se reconoce desde “Importar archivo”.
+function claudeImportBox() {
+  const imp = el('div', { class: 'card' }, el('h3', { class: 'sec', style: 'margin-top:0', text: 'Archivo de la app de Claude' }),
+    el('p', { class: 'note', text: 'Este archivo viene de la app “Repaso de Laringología” de Claude. Se crea el mazo Laringología (con su examen) como mazo tuyo y privado, con tu progreso, ediciones, tarjetas propias, otros mazos e imágenes.' }));
+  const fi = el('input', { type: 'file', accept: 'application/json,.json', id: 'imp-file', hidden: true }); fi.addEventListener('change', () => { if (fi.files[0]) readImport(fi.files[0]); fi.value = ''; });
+  if (!AC.imp) imp.append(fi, el('button', { class: 'b', style: 'margin-top:10px', onclick: () => fi.click() }, 'Elegir archivo'));
+  else if (AC.imp.error) imp.append(el('p', { class: 'note', style: 'color:var(--bad)', text: AC.imp.error }), fi, el('button', { class: 'b small', onclick: () => fi.click() }, 'Elegir otro archivo'));
+  else if (AC.imp.done) imp.append(el('p', { class: 'note', style: 'color:var(--good)', text: AC.imp.done }));
+  else { const sm = AC.imp.summary; imp.append(...[el('ul', { class: 'tips' }, el('li', { text: 'Mazo “' + sm.baseName + '”: ' + plural(sm.base, 'tarjeta', 'tarjetas') + ' y ' + plural(sm.mcq, 'pregunta', 'preguntas') + ' de examen' }),
+      el('li', { text: plural(sm.prog, 'tarjeta', 'tarjetas') + ' con progreso y ' + plural(sm.edits, 'edición', 'ediciones') }), el('li', { text: plural(sm.decks, 'mazo propio', 'mazos propios') + ' más' }), el('li', { text: plural(sm.images, 'imagen', 'imágenes') })),
+      AC.imp.already ? el('p', { class: 'note', style: 'color:var(--warn)', text: 'Ya importaste este archivo antes: si lo importas otra vez, los mazos se duplicarán.' }) : null,
+      el('div', { class: 'btnrow' }, el('button', { class: 'b primary', disabled: AC.imp.busy ? true : null, onclick: runImport }, AC.imp.busy || 'Importar'), el('button', { class: 'b', disabled: AC.imp.busy ? true : null, onclick: () => { AC.imp = null; closeImport(); } }, 'Cancelar'))].filter(Boolean)); }
+  return imp;
 }
 async function imageToId(src) { // data: o https:// → imagen comprimida y guardada en Firebase
   let file;
@@ -928,18 +942,6 @@ function renderAccount() {
   inst.append(el('ul', { class: 'tips' }, el('li', { text: 'iPhone o iPad (Safari): botón Compartir → “Agregar a inicio”.' }), el('li', { text: 'Android (Chrome): menú ⋮ → “Instalar app”.' }),
     el('li', { text: 'Tu progreso es el mismo en todos tus dispositivos. Sin internet puedes seguir estudiando; se sincroniza al reconectar.' })));
   p.append(inst);
-  // importar
-  const imp = el('div', { class: 'card' }, el('h3', { class: 'sec', style: 'margin-top:0', text: 'Importar desde la app de Claude' }),
-    el('p', { class: 'note', text: 'En la app “Repaso de Laringología” de Claude ve a Progreso → “Exportar para la web” y elige aquí el archivo. Se crea el mazo Laringología (con su examen) como mazo tuyo y privado, con tu progreso, ediciones, tarjetas propias, otros mazos e imágenes.' }));
-  const fi = el('input', { type: 'file', accept: 'application/json,.json', id: 'imp-file', hidden: true }); fi.addEventListener('change', () => { if (fi.files[0]) readImport(fi.files[0]); fi.value = ''; });
-  if (!AC.imp) imp.append(fi, el('button', { class: 'b', style: 'margin-top:10px', onclick: () => fi.click() }, 'Elegir archivo'));
-  else if (AC.imp.error) imp.append(el('p', { class: 'note', style: 'color:var(--bad)', text: AC.imp.error }), fi, el('button', { class: 'b small', onclick: () => fi.click() }, 'Elegir otro archivo'));
-  else if (AC.imp.done) imp.append(el('p', { class: 'note', style: 'color:var(--good)', text: AC.imp.done }));
-  else { const sm = AC.imp.summary; imp.append(...[el('ul', { class: 'tips' }, el('li', { text: 'Mazo “' + sm.baseName + '”: ' + plural(sm.base, 'tarjeta', 'tarjetas') + ' y ' + plural(sm.mcq, 'pregunta', 'preguntas') + ' de examen' }),
-      el('li', { text: plural(sm.prog, 'tarjeta', 'tarjetas') + ' con progreso y ' + plural(sm.edits, 'edición', 'ediciones') }), el('li', { text: plural(sm.decks, 'mazo propio', 'mazos propios') + ' más' }), el('li', { text: plural(sm.images, 'imagen', 'imágenes') })),
-      AC.imp.already ? el('p', { class: 'note', style: 'color:var(--warn)', text: 'Ya importaste este archivo antes: si lo importas otra vez, los mazos se duplicarán.' }) : null,
-      el('div', { class: 'btnrow' }, el('button', { class: 'b primary', disabled: AC.imp.busy ? true : null, onclick: runImport }, AC.imp.busy || 'Importar'), el('button', { class: 'b', disabled: AC.imp.busy ? true : null, onclick: () => { AC.imp = null; renderAccount(); } }, 'Cancelar'))].filter(Boolean)); }
-  p.append(imp);
   p.append(deleteAccountCard());
 }
 // ---------- privacidad y eliminar la cuenta ----------
@@ -1002,16 +1004,16 @@ function avatar(size) { const a = el('span', { class: 'avatar', style: size ? 'w
 async function readImport(file) {
   try { const data = JSON.parse(await file.text());
     if (!data || data.app !== 'repaso-laringologia' || !data.S || !data.C) throw new Error('bad');
-    if (!data.base || !Array.isArray(data.base.cards)) { AC.imp = { error: 'Este archivo es de una versión anterior. Vuelve a exportarlo desde la app de Claude (Progreso → Exportar para la web) y elige el archivo nuevo.' }; renderAccount(); return; }
+    if (!data.base || !Array.isArray(data.base.cards)) { AC.imp = { error: 'Este archivo es de una versión anterior. Vuelve a exportarlo desde la app de Claude (Progreso → Exportar para la web) y elige el archivo nuevo.' }; renderDecks(); return; }
     const S = data.S, C = data.C;
     AC.imp = { data, summary: { baseName: data.base.name || 'Laringología', base: data.base.cards.length + (C.cards || []).filter(c => c.deck === 'laringo').length, mcq: (data.base.mcqs || []).length, prog: Object.keys(S.cards || {}).length, edits: Object.keys(C.edits || {}).length,
       decks: (C.decks || []).length, images: Object.keys(data.images || {}).length }, already: (UDOC.imports || []).includes(String(data.exported)) };
   } catch (e) { AC.imp = { error: 'Ese archivo no es una exportación de la app de Claude.' }; }
-  renderAccount();
+  renderDecks();
 }
 async function dataUrlToFile(d) { const r = await fetch(d); const b = await r.blob(); return new File([b], 'img', { type: b.type }); }
 async function runImport() {
-  const I = AC.imp, { S, C, images, base } = I.data; const set = t => { I.busy = t; renderAccount(); };
+  const I = AC.imp, { S, C, images, base } = I.data; const set = t => { I.busy = t; renderDecks(); };
   const created = [];
   try {
     const map = {}; const ids = Object.keys(images || {}); let n = 0;
@@ -1046,9 +1048,9 @@ async function runImport() {
     }
     LISTS.owned.sort(byName);
     UDOC.imports = [...(UDOC.imports || []), String(I.data.exported)]; B.setUserDoc({ imports: UDOC.imports }).catch(() => {});
-    AC.imp = { done: 'Listo: se creó el mazo “' + (base.name || 'Laringología') + '”' + (C.decks && C.decks.length ? ' y ' + plural(C.decks.length, 'mazo más', 'mazos más') : '') + ' con tu progreso. Lo encuentras en Mis mazos.' };
-    await switchDeck(r1.id); mode = 'account'; render();
-  } catch (e) { for (const r of created) B.deleteDeck(r.id, r.code).catch(() => {}); LISTS.owned = LISTS.owned.filter(d => !created.some(r => r.id === d.id)); I.busy = false; I.error = 'La importación se interrumpió y se deshizo: ' + B.errorMessage(e); renderAccount(); }
+    const msg = 'Listo: se creó el mazo “' + (base.name || 'Laringología') + '”' + (C.decks && C.decks.length ? ' y ' + plural(C.decks.length, 'mazo más', 'mazos más') : '') + ' con tu progreso.';
+    AC.imp = null; IM.open = false; await switchDeck(r1.id); setMode('decks'); toast(msg);
+  } catch (e) { for (const r of created) B.deleteDeck(r.id, r.code).catch(() => {}); LISTS.owned = LISTS.owned.filter(d => !created.some(r => r.id === d.id)); I.busy = false; I.error = 'La importación se interrumpió y se deshizo: ' + B.errorMessage(e); renderDecks(); }
 }
 
 // ---------- autenticación ----------

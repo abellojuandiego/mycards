@@ -95,7 +95,7 @@ Las reglas son las que protegen la app. Garantizan que:
 ## 9. Traer el mazo de Laringología desde la app de Claude
 
 1. En la app **Repaso de Laringología** de Claude ve a **Progreso → Exportar para la web** y guarda el archivo.
-2. En MyCards ve a **Cuenta → Importar desde la app de Claude** y elige ese archivo.
+2. En MyCards ve a **Mis mazos → Importar archivo** y elige ese archivo. MyCards lo reconoce solo.
 3. Se crea en tu cuenta el mazo **Laringología** (privado y tuyo, con su número de serie). Incluye:
    - las 274 tarjetas, con tus ediciones y tarjetas propias;
    - las 144 preguntas de examen;
@@ -189,7 +189,7 @@ Si algo falla a mitad de la importación, se deshace todo y no quedan mazos a me
 | `.csv`, `.tsv`, `.txt` | Excel o Google Sheets ("Guardar como CSV"), Quizlet (Exportar), Anki ("Notas en texto plano") | Detecta solo el separador (`;`, `,` o tabulación) y las columnas por su encabezado. Sin encabezados: 1.ª columna = pregunta, 2.ª = respuesta. |
 | `.xlsx` | Excel | Igual que el CSV. Si el libro tiene varias hojas, cada hoja queda como un tema. |
 | `.json` | "Exportar" de MyCards, o el que te prepare Claude | Formato completo: temas, opción múltiple, explicaciones e imágenes. |
-| `.json` de la app de Claude | "Exportar para la web" de Repaso de Laringología | Te lleva automáticamente al importador de **Cuenta**. |
+| `.json` de la app de Claude | "Exportar para la web" de Repaso de Laringología | Lo reconoce solo e importa el mazo con tu progreso. |
 | `.apkg` / `.colpkg` | Anki (cualquier versión, formato antiguo y actual) | Ver "Mazos de Anki" abajo. |
 
 **Encabezados que reconoce** (sin importar mayúsculas ni tildes):
