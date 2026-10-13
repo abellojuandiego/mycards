@@ -1111,7 +1111,16 @@ document.addEventListener('keydown', e => {
 
 // ---------- arranque ----------
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (mode === 'account') renderAccount(); });
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !window.__MOCK_BACKEND__) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !window.__MOCK_BACKEND__) {
+  // Al publicar una versión nueva, el service worker nuevo toma el control y la página se recarga sola una vez.
+  const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !SAVE.pending && !Object.keys(SAVE.fns).length) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60e3);
+  }).catch(() => {});
+}
 const wantedCode = cleanCode(new URL(location.href).searchParams.get('serie') || '');
 function showApp(on) { $('boot').hidden = true; $('auth').hidden = on; $('main').hidden = !on; }
 B.onUser(async u => {
