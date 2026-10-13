@@ -3,7 +3,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider,
+  signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, OAuthProvider, EmailAuthProvider,
+  reauthenticateWithCredential, reauthenticateWithPopup, deleteUser,
   sendPasswordResetEmail, sendEmailVerification, updateProfile, signOut as fbSignOut
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
@@ -11,7 +12,8 @@ import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot,
   increment, limit, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
-import { firebaseConfig } from './firebase-config.js';
+import * as CFG from './firebase-config.js';
+const firebaseConfig = CFG.firebaseConfig;
 
 let B;
 const configured = !!(firebaseConfig && firebaseConfig.apiKey && !String(firebaseConfig.apiKey).includes('PEGA'));
@@ -37,7 +39,7 @@ const uid = () => auth.currentUser && auth.currentUser.uid;
 const strip = o => JSON.parse(JSON.stringify(o)); // quita undefined
 
 B = {
-  configured, redirectError: null,
+  configured, redirectError: null, appleEnabled: CFG.appleSignIn === true,
   kind: 'firebase',
 
   // ---------- cuenta ----------
@@ -58,6 +60,47 @@ B = {
       }
       throw e;
     }
+  },
+  async signInApple() {
+    const p = appleProvider();
+    try { const c = await signInWithPopup(auth, p); return toUser(c.user); }
+    catch (e) {
+      if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'].includes(e.code)) { await signInWithRedirect(auth, p); return null; }
+      throw e;
+    }
+  },
+  // Antes de borrar la cuenta Firebase exige un inicio de sesión reciente: se vuelve a confirmar la identidad.
+  async reauth(password) {
+    const u = auth.currentUser; const prov = (u.providerData[0] && u.providerData[0].providerId) || 'password';
+    if (prov === 'password') await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, password || ''));
+    else if (prov === 'google.com') { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); await reauthenticateWithPopup(u, p); }
+    else if (prov === 'apple.com') await reauthenticateWithPopup(u, appleProvider());
+    else throw Object.assign(new Error('Proveedor no admitido'), { code: 'auth/operation-not-allowed' });
+  },
+  // Borra todo lo de la persona: sus mazos (tarjetas y número de serie), las imágenes de esos mazos y de sus
+  // ediciones personales, su progreso, sus ediciones, su perfil y, al final, la cuenta.
+  async deleteAccount(onProgress = () => {}) {
+    const me = uid(); const imgs = new Set();
+    const owned = await B.listOwnedDecks();
+    let i = 0;
+    for (const d of owned) {
+      onProgress('Borrando tus mazos (' + (++i) + '/' + owned.length + ')…');
+      const cs = await getDocs(collection(db, 'decks', d.id, 'cards'));
+      cs.docs.forEach(c => (c.data().img || []).forEach(x => imgs.add(x)));
+      await B.deleteDeck(d.id, d.code);
+    }
+    onProgress('Borrando tu progreso y tus ediciones…');
+    for (const sub of ['edits', 'progress']) {
+      const s = await getDocs(collection(db, 'users', me, sub));
+      if (sub === 'edits') s.docs.forEach(x => Object.values(x.data().edits || {}).forEach(e => (e && e.img || []).forEach(id => imgs.add(id))));
+      await runChunks(s.docs, x => deleteDoc(x.ref));
+    }
+    const ids = [...imgs]; let n = 0;
+    await runChunks(ids, async id => { onProgress('Borrando imágenes (' + (++n) + '/' + ids.length + ')…'); await deleteDoc(doc(db, 'images', id)).catch(() => {}); }, 20);
+    onProgress('Borrando tu perfil…');
+    await deleteDoc(doc(db, 'users', me));
+    onProgress('Eliminando la cuenta…');
+    await deleteUser(auth.currentUser);
   },
   async resetPassword(email) { await sendPasswordResetEmail(auth, email.trim()); },
   async resendVerification() { if (auth.currentUser) await sendEmailVerification(auth.currentUser); },
@@ -166,6 +209,9 @@ B = {
       'auth/unauthorized-domain': 'Este dominio no está autorizado en Firebase (Authentication → Configuración → Dominios autorizados).',
       'auth/network-request-failed': 'Sin conexión. Revisa tu internet.',
       'auth/account-exists-with-different-credential': 'Ese correo ya está registrado con otro método de acceso.',
+      'auth/requires-recent-login': 'Por seguridad, cierra sesión, vuelve a entrar y repite la acción.',
+      'auth/user-mismatch': 'Confirmaste con una cuenta distinta. Usa la misma cuenta con la que entraste.',
+      'auth/operation-not-allowed': 'Ese método de acceso no está activado en Firebase.',
       'permission-denied': 'No tienes permiso para hacer esto en este mazo.',
       'unavailable': 'Sin conexión: se guardará cuando vuelvas a tener internet.',
       'resource-exhausted': 'Se alcanzó el límite gratuito de hoy. Inténtalo mañana.'
@@ -173,6 +219,8 @@ B = {
     return m[e && e.code] || (e && e.message) || 'Algo salió mal. Inténtalo de nuevo.';
   }
 };
+
+function appleProvider() { const p = new OAuthProvider('apple.com'); p.addScope('email'); p.addScope('name'); p.setCustomParameters({ locale: 'es_ES' }); return p; }
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function newCode() { const r = crypto.getRandomValues(new Uint32Array(8)); return Array.from(r, x => CODE_CHARS[x % CODE_CHARS.length]).join(''); }

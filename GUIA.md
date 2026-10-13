@@ -244,6 +244,41 @@ En la misma pantalla hay dos **plantillas**, una para Excel (.csv) y otra JSON, 
 
 Cada mazo tiene un botón **Exportar** que descarga `nombre.mycards.json` con las tarjetas, las preguntas, los temas y las imágenes. Sirve como copia de seguridad o para pasarle el mazo a alguien como archivo. No incluye tu progreso.
 
+## Privacidad y eliminar la cuenta
+
+- **Política de privacidad:** está en `privacidad.html`, publicada en `https://mycards-app.com/privacidad.html`. Hay enlaces a ella en la pantalla de entrada y en **Cuenta**. Google Play y la App Store piden esta dirección al publicar la app.
+- **Eliminar la cuenta:** en **Cuenta → Privacidad y cuenta → Eliminar mi cuenta**. La persona escribe `ELIMINAR` y confirma su identidad (contraseña, Google o Apple). Se borran:
+  - sus mazos, con sus tarjetas, imágenes y números de serie;
+  - su progreso, sus ediciones y su perfil;
+  - la cuenta.
+- **Enlace para las tiendas:** Google Play pide un enlace donde se explique cómo pedir la eliminación sin la app. Es `https://mycards-app.com/privacidad.html#eliminar`.
+- **Si editas `privacidad.html`:** cambia la fecha de vigencia. Si quieres otro correo de contacto, reemplaza `abellojuandiego@gmail.com` en las tres partes donde aparece.
+
+## Iniciar sesión con Apple (cuando tengas la cuenta de Apple Developer)
+
+Apple exige este botón en la app de iPhone porque MyCards ofrece entrar con Google. El código ya está listo y sólo falta activarlo. Necesitas el Apple Developer Program (99 USD al año).
+
+1. **Crea el App ID.** En <https://developer.apple.com/account> → **Certificates, Identifiers & Profiles → Identifiers → +** → **App IDs**:
+   - Bundle ID: `com.mycardsapp.app` (el mismo que usaremos en la app de iPhone).
+   - Marca **Sign in with Apple**.
+2. **Crea el Services ID.** En **Identifiers → +** → **Services IDs**:
+   - Identificador: `com.mycardsapp.web`.
+   - Marca **Sign in with Apple → Configure**. Como Primary App ID elige el del paso 1.
+   - En **Domains** escribe `mycards-001.firebaseapp.com`.
+   - En **Return URLs** escribe `https://mycards-001.firebaseapp.com/__/auth/handler`.
+3. **Crea la llave.** En **Keys → +**:
+   - Nombre: "MyCards Apple". Marca **Sign in with Apple** y asóciala al App ID.
+   - Descarga el archivo `.p8`. **Sólo se puede descargar una vez**, así que guárdalo bien.
+   - Anota el **Key ID**. Anota también tu **Team ID**, que aparece arriba a la derecha de la página.
+4. **Actívalo en Firebase.** En **Authentication → Método de acceso → Agregar proveedor → Apple**:
+   - Actívalo.
+   - En Services ID pega `com.mycardsapp.web`.
+   - En "Configuración del flujo de código OAuth" pega el Team ID, el Key ID y el contenido del archivo `.p8`.
+   - Guarda.
+5. **Configura los correos de Apple.** Apple permite ocultar el correo, así que hay que autorizar los correos de Firebase:
+   - En Apple Developer ve a **Services → Sign in with Apple for Email Communication → Configure** y registra `noreply@mycards-001.firebaseapp.com`.
+6. **Enciende el botón.** En `js/firebase-config.js` cambia `appleSignIn = false` por `appleSignIn = true`. Luego haz Commit y Push. El botón negro "Continuar con Apple" aparece en la pantalla de entrada.
+
 ## Números de serie y cómo se comparte un mazo
 
 Cada mazo recibe un **número de serie único** de 8 caracteres (por ejemplo `K7QP-3XMA`) en el momento en que se crea. Aparece en la tarjeta del mazo en **Mis mazos** y en **Compartir**. Otra persona lo agrega desde **Mis mazos → Agregar con n.º de serie** o abriendo el enlace del mazo. Mayúsculas, espacios y guiones no importan.
@@ -316,6 +351,7 @@ Si un cambio modifica `firestore.rules`, vuelve a pegarlo en Firebase → Firest
 | `js/importer.js` | Lectura de archivos para importar y exportar mazos (CSV, Excel, JSON). |
 | `js/anki.js` | Lector de mazos de Anki (.apkg): zip, SQLite y plantillas. Sólo se descarga al subir un .apkg. |
 | `js/vendor/fzstd.js` | Descompresor Zstandard (fzstd, licencia MIT) para el formato actual de Anki. |
-| `js/firebase-config.js` | Tu configuración de Firebase (paso 5). |
+| `js/firebase-config.js` | Tu configuración de Firebase (paso 5) y el interruptor de "Iniciar sesión con Apple". |
+| `privacidad.html` | Política de privacidad e instrucciones para eliminar la cuenta. |
 | `firestore.rules` | Reglas de seguridad (paso 3). |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Hacen que se pueda instalar y abrir sin conexión. |

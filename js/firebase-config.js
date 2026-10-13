@@ -8,3 +8,7 @@ export const firebaseConfig = {
   messagingSenderId: "891523777846",
   appId: "1:891523777846:web:61d07fd06d22a0ba8fdf97"
 };
+
+// "Iniciar sesión con Apple": cámbialo a true sólo después de configurarlo en Apple Developer y en
+// Firebase → Authentication → Método de acceso → Apple (GUIA.md, sección "Iniciar sesión con Apple").
+export const appleSignIn = false;

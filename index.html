@@ -201,6 +201,10 @@ input[type=email],input[type=password]{font:500 15px var(--f-ui);color:var(--ink
 .seg button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;font:600 15px var(--f-ui);padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
 .gbtn span{display:inline-flex}
+.gbtn.apple{background:#000;color:#fff;border-color:#000;margin-top:8px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .gbtn.apple{background:#fff;color:#000;border-color:#fff}}
+:root[data-theme="dark"] .gbtn.apple{background:#fff;color:#000;border-color:#fff}
+.note a,.card p a{color:var(--accent);font-weight:600}
 .divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px}
 .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
 .auth .form{margin-top:0}

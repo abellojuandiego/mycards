@@ -896,7 +896,7 @@ const AC = { editingName: false, name: '', imp: null };
 function renderAccount() {
   const p = $('panel-account'); p.innerHTML = '';
   const card = el('div', { class: 'card' });
-  card.append(el('div', { class: 'acct' }, avatar(48), el('div', { style: 'min-width:0' }, el('div', { class: 'q', style: 'margin:0', text: USER.name }), el('div', { class: 'note', text: USER.email + (USER.provider === 'google.com' ? ' · Google' : ' · correo y contraseña') }))));
+  card.append(el('div', { class: 'acct' }, avatar(48), el('div', { style: 'min-width:0' }, el('div', { class: 'q', style: 'margin:0', text: USER.name }), el('div', { class: 'note', text: USER.email + (USER.provider === 'google.com' ? ' · Google' : USER.provider === 'apple.com' ? ' · Apple' : ' · correo y contraseña') }))));
   if (AC.editingName) { const inp = el('input', { type: 'text', id: 'acct-name', maxlength: '100', 'aria-label': 'Tu nombre' }); inp.value = AC.name; inp.addEventListener('input', () => AC.name = inp.value);
     card.append(el('div', { class: 'addrow', style: 'margin-top:12px' }, inp, el('button', { class: 'b small primary', onclick: async () => { const n = AC.name.trim(); if (!n) return; try { USER = await B.updateName(n); AC.editingName = false; B.setUserDoc({ name: n }).catch(() => {}); $('acct-avatar').replaceChildren(avatar()); renderAccount(); } catch (e) { toast(B.errorMessage(e)); } } }, 'Guardar'), el('button', { class: 'b small', onclick: () => { AC.editingName = false; renderAccount(); } }, 'Cancelar'))); }
   const row = el('div', { class: 'btnrow', style: 'margin-top:14px' });
@@ -940,6 +940,59 @@ function renderAccount() {
       AC.imp.already ? el('p', { class: 'note', style: 'color:var(--warn)', text: 'Ya importaste este archivo antes: si lo importas otra vez, los mazos se duplicarán.' }) : null,
       el('div', { class: 'btnrow' }, el('button', { class: 'b primary', disabled: AC.imp.busy ? true : null, onclick: runImport }, AC.imp.busy || 'Importar'), el('button', { class: 'b', disabled: AC.imp.busy ? true : null, onclick: () => { AC.imp = null; renderAccount(); } }, 'Cancelar'))].filter(Boolean)); }
   p.append(imp);
+  p.append(deleteAccountCard());
+}
+// ---------- privacidad y eliminar la cuenta ----------
+function deleteAccountCard() {
+  const box = el('div', { class: 'card' }, el('h3', { class: 'sec', style: 'margin-top:0', text: 'Privacidad y cuenta' }),
+    el('p', { class: 'note', style: 'margin:6px 0 12px;font-size:14px' }, 'Lee qué datos guarda MyCards y para qué en la ', el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener', text: 'política de privacidad' }), '.'));
+  const D = AC.del;
+  if (!D) { box.append(el('button', { class: 'b small danger', onclick: () => { AC.del = { text: '', pass: '', busy: '', err: '' }; renderAccount(); setTimeout(() => { const i = $('del-confirm'); if (i) i.focus(); }, 0); } }, 'Eliminar mi cuenta')); return box; }
+  const owned = LISTS.owned.length;
+  box.append(el('div', { class: 'banner', style: 'border-color:var(--bad);background:var(--bad-soft);flex-direction:column;align-items:stretch;gap:8px' },
+    el('b', { text: 'Eliminar tu cuenta es definitivo y no se puede deshacer.' }),
+    el('ul', { class: 'tips', style: 'margin:0' },
+      el('li', { text: 'Se borran tus mazos (' + owned + ') con sus tarjetas, imágenes y números de serie, también para las personas con quienes los compartiste.' }),
+      el('li', { text: 'Se borran tu progreso, tus ediciones personales y tus ajustes.' }),
+      el('li', { text: 'Las tarjetas que agregaste a mazos de otras personas se quedan en esos mazos.' }),
+      el('li', { text: 'Si quieres conservar algo, usa antes “Exportar” en cada mazo.' }))));
+  const f = el('div', { class: 'form' });
+  const ci = el('input', { type: 'text', id: 'del-confirm', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', disabled: D.busy ? true : null }); ci.value = D.text;
+  ci.addEventListener('input', () => { D.text = ci.value; const b = $('del-go'); if (b) b.disabled = !delReady(); });
+  f.append(el('div', { class: 'field' }, el('label', { for: 'del-confirm', text: 'Escribe ELIMINAR para confirmar' }), ci));
+  if (USER.provider === 'password') { const pi = el('input', { type: 'password', id: 'del-pass', autocomplete: 'current-password', disabled: D.busy ? true : null }); pi.value = D.pass; pi.addEventListener('input', () => { D.pass = pi.value; const b = $('del-go'); if (b) b.disabled = !delReady(); }); f.append(el('div', { class: 'field' }, el('label', { for: 'del-pass', text: 'Tu contraseña' }), pi)); }
+  else f.append(el('p', { class: 'note', text: 'Al confirmar se abrirá ' + (USER.provider === 'apple.com' ? 'Apple' : 'Google') + ' para verificar que eres tú.' }));
+  box.append(f);
+  if (D.err) box.append(el('p', { class: 'note', style: 'color:var(--bad);font-size:14px;margin-top:8px', text: D.err }));
+  if (D.busy) box.append(el('p', { class: 'note', style: 'font-size:14px;margin-top:8px', text: D.busy }));
+  box.append(el('div', { class: 'btnrow', style: 'margin-top:12px' },
+    el('button', { class: 'b danger', id: 'del-go', disabled: D.busy || !delReady() ? true : null, onclick: runDeleteAccount }, D.busy ? 'Eliminando…' : 'Eliminar mi cuenta definitivamente'),
+    el('button', { class: 'b', disabled: D.busy ? true : null, onclick: () => { AC.del = null; renderAccount(); } }, 'Cancelar')));
+  return box;
+}
+function delReady() { const D = AC.del; return !!D && D.text.trim().toUpperCase() === 'ELIMINAR' && (USER.provider !== 'password' || D.pass.length > 0); }
+async function runDeleteAccount() {
+  const D = AC.del; if (!D || D.busy || !delReady()) return;
+  const set = t => { D.busy = t; renderAccount(); };
+  D.err = ''; set('Confirmando que eres tú…');
+  try { await B.reauth(D.pass); }
+  catch (e) { D.busy = ''; D.err = ['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(e.code) ? 'La contraseña no es correcta.' : B.errorMessage(e); renderAccount(); return; }
+  // Detiene todo lo que podría volver a escribir datos mientras se borran.
+  for (const k of Object.keys(SAVE.timers)) clearTimeout(SAVE.timers[k]);
+  SAVE.timers = {}; SAVE.fns = {};
+  if (CUR && CUR.unsub) CUR.unsub(); CUR = null;
+  try {
+    await B.deleteAccount(set);
+    AC.del = null; AU.tab = 'in'; AU.err = ''; AU.msg = 'Tu cuenta y tus datos se eliminaron. Gracias por usar MyCards.';
+    if (!USER) renderAuth();
+    toast('Cuenta eliminada.');
+  } catch (e) {
+    D.busy = '';
+    D.err = e && e.code === 'auth/requires-recent-login'
+      ? 'Tus datos ya se borraron, pero la confirmación de identidad venció antes de terminar. Cierra sesión, vuelve a entrar y repite “Eliminar mi cuenta” para terminar.'
+      : 'No se pudo completar: ' + B.errorMessage(e) + ' Vuelve a intentarlo; lo que ya se borró no se recupera.';
+    renderAccount();
+  }
 }
 function avatar(size) { const a = el('span', { class: 'avatar', style: size ? 'width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.42) + 'px' : null });
   if (USER && USER.photo) { const im = el('img', { src: USER.photo, alt: '', referrerpolicy: 'no-referrer' }); im.addEventListener('error', () => { im.remove(); a.textContent = (USER.name || '?')[0].toUpperCase(); }); a.append(im); }
@@ -1010,6 +1063,8 @@ function renderAuth() {
     el('button', { role: 'tab', 'aria-selected': String(AU.tab === 'up'), onclick: () => { AU.tab = 'up'; AU.err = ''; renderAuth(); } }, 'Crear cuenta')));
   card.append(el('button', { class: 'gbtn', type: 'button', disabled: AU.busy ? true : null, onclick: async () => { AU.busy = true; AU.err = ''; renderAuth(); try { await B.signInGoogle(); } catch (e) { AU.err = B.errorMessage(e); } AU.busy = false; if (!USER) renderAuth(); } },
     el('span', { html: '<svg viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.8l-8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>' }), 'Continuar con Google'),
+    B.appleEnabled ? el('button', { class: 'gbtn apple', type: 'button', disabled: AU.busy ? true : null, onclick: async () => { AU.busy = true; AU.err = ''; renderAuth(); try { await B.signInApple(); } catch (e) { AU.err = B.errorMessage(e); } AU.busy = false; if (!USER) renderAuth(); } },
+      el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.62-1.7-3.19-1.72-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.88-.76-1.48.02-2.85.86-3.61 2.19-1.54 2.67-.39 6.62 1.11 8.79.73 1.06 1.6 2.25 2.75 2.21 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.7.71 2.87.69 1.19-.02 1.94-1.08 2.66-2.15.84-1.23 1.19-2.42 1.21-2.48-.03-.01-2.32-.89-2.31-3.55zM14.17 6.13c.61-.74 1.02-1.76.91-2.78-.88.04-1.94.58-2.57 1.32-.56.65-1.06 1.7-.92 2.7.98.08 1.97-.5 2.58-1.24z"/></svg>' }), 'Continuar con Apple') : null,
     el('div', { class: 'divider' }, el('span', { text: 'o con tu correo' })));
   const f = el('form', { class: 'form', onsubmit: e => { e.preventDefault(); submitAuth(); } });
   if (AU.tab === 'up') f.append(field('au-name', 'Nombre', 'text', AU.name, v => AU.name = v, 'name'));
@@ -1023,6 +1078,7 @@ function renderAuth() {
   card.append(el('div', { class: 'btnrow', style: 'margin-top:12px;justify-content:center' },
     AU.tab === 'in' ? el('button', { class: 'linkbtn', onclick: () => { AU.tab = 'reset'; AU.err = ''; AU.msg = ''; renderAuth(); } }, '¿Olvidaste tu contraseña?') : null,
     AU.tab === 'reset' ? el('button', { class: 'linkbtn', onclick: () => { AU.tab = 'in'; AU.err = ''; AU.msg = ''; renderAuth(); } }, 'Volver a entrar') : null));
+  card.append(el('p', { class: 'note', style: 'margin-top:14px;text-align:center' }, (AU.tab === 'up' ? 'Al crear tu cuenta aceptas la ' : 'Consulta la '), el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener', text: 'política de privacidad' }), '.'));
   p.append(card);
 }
 function field(id, label, type, val, set, ac) { const i = el('input', { type, id, autocomplete: ac, required: true }); i.value = val; i.addEventListener('input', () => set(i.value)); return el('div', { class: 'field' }, el('label', { for: id, text: label }), i); }
