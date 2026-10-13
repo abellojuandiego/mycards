@@ -171,6 +171,63 @@ Cada dirección web guarda su propia sesión y su propia copia sin conexión, as
 
 ---
 
+## Importar y exportar mazos (archivos)
+
+En **Mis mazos → Importar archivo** subes un archivo y MyCards crea el mazo solo. Antes de crearlo muestra una vista previa con:
+
+- el nombre, que puedes cambiar;
+- cuántas tarjetas, preguntas de examen y temas encontró;
+- las primeras tarjetas, y en las preguntas de opción múltiple la respuesta marcada como correcta;
+- avisos sobre filas incompletas o tarjetas repetidas (que se omiten).
+
+Si algo falla a mitad de la importación, se deshace todo y no quedan mazos a medias.
+
+### Formatos que acepta
+
+| Archivo | De dónde sale | Cómo lo lee MyCards |
+| --- | --- | --- |
+| `.csv`, `.tsv`, `.txt` | Excel o Google Sheets ("Guardar como CSV"), Quizlet (Exportar), Anki ("Notas en texto plano") | Detecta solo el separador (`;`, `,` o tabulación) y las columnas por su encabezado. Sin encabezados: 1.ª columna = pregunta, 2.ª = respuesta. |
+| `.xlsx` | Excel | Igual que el CSV. Si el libro tiene varias hojas, cada hoja queda como un tema. |
+| `.json` | "Exportar" de MyCards, o el que te prepare Claude | Formato completo: temas, opción múltiple, explicaciones e imágenes. |
+| `.json` de la app de Claude | "Exportar para la web" de Repaso de Laringología | Te lleva automáticamente al importador de **Cuenta**. |
+| `.apkg` | Anki | Todavía no: en Anki usa Archivo → Exportar → "Notas en texto plano (.txt)". Está en preparación. |
+
+**Encabezados que reconoce** (sin importar mayúsculas ni tildes):
+
+- **Pregunta:** pregunta, frente, anverso, front, question, término.
+- **Respuesta:** respuesta, reverso, back, answer, definición.
+- **Tema:** tema, capítulo, categoría, sección, topic.
+- **Opción múltiple:** opcion_a … opcion_h (o A, B, C, D), correcta (letra, número u opción completa), explicacion.
+
+En Anki también entiende los encabezados `#separator`, `#html` y `#deck column`. Los subconjuntos del mazo (`ORL::Laringe::Anatomía`) se convierten en temas, el HTML se limpia y los cloze `{{c1::…}}` pasan a pregunta y respuesta.
+
+En la misma pantalla hay dos **plantillas**, una para Excel (.csv) y otra JSON, y un botón **Copiar instrucciones para Claude**. Pegas esas instrucciones en un chat con Claude, cambias `[TEMA]` y te devuelve un archivo listo para subir.
+
+### El formato JSON de MyCards
+
+```json
+{
+  "format": "mycards",
+  "version": 1,
+  "name": "Laringología",
+  "description": "Opcional",
+  "cards": [
+    { "q": "Pregunta", "a": "Respuesta", "topic": "Tema", "img": ["data:image/webp;base64,…"] }
+  ],
+  "questions": [
+    { "q": "Pregunta", "options": ["A", "B", "C", "D"], "correct": "B", "explanation": "Por qué", "topic": "Tema" }
+  ]
+}
+```
+
+- `topic`, `img`, `description` y `questions` son opcionales.
+- `correct` es la letra de la opción correcta (A = la primera).
+- Para varios mazos en un archivo: `{ "format": "mycards", "version": 1, "decks": [ {…}, {…} ] }`.
+
+### Exportar
+
+Cada mazo tiene un botón **Exportar** que descarga `nombre.mycards.json` con las tarjetas, las preguntas, los temas y las imágenes. Sirve como copia de seguridad o para pasarle el mazo a alguien como archivo. No incluye tu progreso.
+
 ## Números de serie y cómo se comparte un mazo
 
 Cada mazo recibe un **número de serie único** de 8 caracteres (por ejemplo `K7QP-3XMA`) en el momento en que se crea. Aparece en la tarjeta del mazo en **Mis mazos** y en **Compartir**. Otra persona lo agrega desde **Mis mazos → Agregar con n.º de serie** o abriendo el enlace del mazo. Mayúsculas, espacios y guiones no importan.
@@ -240,6 +297,7 @@ Si un cambio modifica `firestore.rules`, vuelve a pegarlo en Firebase → Firest
 | `js/app.js` | La aplicación: estudio, mazos, compartir, búsqueda, cuenta e importación. |
 | `js/backend.js` | Conexión con Firebase (cuentas y base de datos). |
 | `js/srs.js` | Algoritmo de repetición espaciada (FSRS-5). |
+| `js/importer.js` | Lectura de archivos para importar y exportar mazos (CSV, Excel, JSON). |
 | `js/firebase-config.js` | Tu configuración de Firebase (paso 5). |
 | `firestore.rules` | Reglas de seguridad (paso 3). |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Hacen que se pueda instalar y abrir sin conexión. |

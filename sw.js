@@ -1,7 +1,7 @@
 // Service worker: permite abrir la app sin conexión y recibir actualizaciones al reconectar.
 // Cambia VERSION cuando publiques una actualización grande para limpiar la caché antigua.
-const VERSION = 'mycards-v1';
-const SHELL = ['./', './index.html', './js/app.js', './js/backend.js', './js/srs.js', './js/firebase-config.js',
+const VERSION = 'mycards-v2';
+const SHELL = ['./', './index.html', './js/app.js', './js/backend.js', './js/srs.js', './js/importer.js', './js/firebase-config.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
