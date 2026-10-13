@@ -190,7 +190,7 @@ Si algo falla a mitad de la importación, se deshace todo y no quedan mazos a me
 | `.xlsx` | Excel | Igual que el CSV. Si el libro tiene varias hojas, cada hoja queda como un tema. |
 | `.json` | "Exportar" de MyCards, o el que te prepare Claude | Formato completo: temas, opción múltiple, explicaciones e imágenes. |
 | `.json` de la app de Claude | "Exportar para la web" de Repaso de Laringología | Te lleva automáticamente al importador de **Cuenta**. |
-| `.apkg` | Anki | Todavía no: en Anki usa Archivo → Exportar → "Notas en texto plano (.txt)". Está en preparación. |
+| `.apkg` / `.colpkg` | Anki (cualquier versión, formato antiguo y actual) | Ver "Mazos de Anki" abajo. |
 
 **Encabezados que reconoce** (sin importar mayúsculas ni tildes):
 
@@ -200,6 +200,22 @@ Si algo falla a mitad de la importación, se deshace todo y no quedan mazos a me
 - **Opción múltiple:** opcion_a … opcion_h (o A, B, C, D), correcta (letra, número u opción completa), explicacion.
 
 En Anki también entiende los encabezados `#separator`, `#html` y `#deck column`. Los subconjuntos del mazo (`ORL::Laringe::Anatomía`) se convierten en temas, el HTML se limpia y los cloze `{{c1::…}}` pasan a pregunta y respuesta.
+
+### Mazos de Anki (.apkg)
+
+MyCards lee el archivo de Anki directamente en tu navegador, sin subirlo a ningún servidor:
+
+- **Formatos:** el antiguo (`collection.anki2` / `anki21`) y el actual de Anki 2.1.50 en adelante (`collection.anki21b`, comprimido con zstd).
+- **Tarjetas:** cada tarjeta se arma con las plantillas del propio mazo, igual que en Anki. Eso incluye básicas, con tarjeta invertida, cloze (una tarjeta por cada c1, c2…, con pistas), campos condicionales y plantillas complejas como las de AnKing. Se quitan los botones, el código y el formato, y queda el texto.
+- **Mazos y temas:** el mazo principal pasa a ser el mazo de MyCards y los submazos (`ORL::Laringe::Anatomía`) se convierten en temas. Si el archivo trae varios mazos principales, se crea un mazo por cada uno.
+- **Imágenes:** las del frente se muestran con la pregunta y las del reverso con la respuesta. Se comprimen y cada imagen se sube una sola vez, aunque la usen varias tarjetas. Si son muchas, puedes desmarcar "Incluir las imágenes" para importar sólo el texto.
+- **Lo que no se importa:**
+  - audio y video;
+  - imágenes SVG;
+  - el progreso de Anki;
+  - las máscaras de las tarjetas de oclusión de imagen: se importan con la imagen completa y su encabezado.
+
+**Importante (una sola vez):** las imágenes en la pregunta necesitan las reglas nuevas de `firestore.rules`. Pégalas de nuevo en Firebase → Firestore Database → Reglas → **Publicar**. Sin ese paso, la importación de un mazo con imágenes en la pregunta se detiene y te lo avisa.
 
 En la misma pantalla hay dos **plantillas**, una para Excel (.csv) y otra JSON, y un botón **Copiar instrucciones para Claude**. Pegas esas instrucciones en un chat con Claude, cambias `[TEMA]` y te devuelve un archivo listo para subir.
 
@@ -298,6 +314,8 @@ Si un cambio modifica `firestore.rules`, vuelve a pegarlo en Firebase → Firest
 | `js/backend.js` | Conexión con Firebase (cuentas y base de datos). |
 | `js/srs.js` | Algoritmo de repetición espaciada (FSRS-5). |
 | `js/importer.js` | Lectura de archivos para importar y exportar mazos (CSV, Excel, JSON). |
+| `js/anki.js` | Lector de mazos de Anki (.apkg): zip, SQLite y plantillas. Sólo se descarga al subir un .apkg. |
+| `js/vendor/fzstd.js` | Descompresor Zstandard (fzstd, licencia MIT) para el formato actual de Anki. |
 | `js/firebase-config.js` | Tu configuración de Firebase (paso 5). |
 | `firestore.rules` | Reglas de seguridad (paso 3). |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Hacen que se pueda instalar y abrir sin conexión. |

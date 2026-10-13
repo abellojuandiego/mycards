@@ -39,10 +39,11 @@ service cloud.firestore {
     }
 
     function validCard(c) {
-      return c.keys().hasOnly(['q', 'a', 'img', 'ch', 'type', 'o', 'k', 'e', 'created', 'updated', 'by'])
+      return c.keys().hasOnly(['q', 'a', 'img', 'qi', 'ch', 'type', 'o', 'k', 'e', 'created', 'updated', 'by'])
         && c.q is string && c.q.size() > 0 && c.q.size() <= 5000
         && (!('a' in c) || (c.a is string && c.a.size() <= 20000))
         && (!('img' in c) || (c.img is list && c.img.size() <= 12))
+        && (!('qi' in c) || (c.qi is int && c.qi >= 0 && c.qi <= 12))
         && (!('ch' in c) || c.ch == null || (c.ch is int && c.ch >= 0 && c.ch <= 100000))
         && (!('type' in c) || c.type == 'mcq')
         && (!('o' in c) || (c.o is list && c.o.size() >= 2 && c.o.size() <= 8))

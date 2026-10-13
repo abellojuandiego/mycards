@@ -265,7 +265,8 @@ const KEYS = {
   k: ['correct', 'correcta', 'correctanswer', 'correct_answer', 'respuestacorrecta', 'respuesta_correcta', 'key', 'clave', 'solution', 'solucion', 'answer', 'respuesta'],
   e: ['e', 'explanation', 'explicacion', 'rationale', 'justificacion', 'feedback', 'comentario', 'notes', 'nota', 'extra'],
   topic: ['topic', 'tema', 'chapter', 'capitulo', 'category', 'categoria', 'section', 'seccion', 'unit', 'unidad', 'subject', 'deck', 'tag', 'tags', 'etiquetas'],
-  img: ['img', 'imgs', 'image', 'images', 'imagen', 'imagenes', 'figura', 'figure', 'picture']
+  img: ['img', 'imgs', 'image', 'images', 'imagen', 'imagenes', 'figura', 'figure', 'picture', 'aimg', 'answerimages'],
+  qimg: ['qimg', 'qimgs', 'questionimages', 'question_images', 'imagenespregunta', 'imagen_pregunta', 'frontimages']
 };
 const keyOf = (obj, list) => { const ks = Object.keys(obj); for (const want of list) { const f = ks.find(k => strip(k).replace(/ /g, '') === want.replace(/_/g, '')); if (f != null && obj[f] != null && obj[f] !== '') return f; } return null; };
 const LIST_KEYS = ['cards', 'tarjetas', 'flashcards', 'notes', 'notas', 'items', 'questions', 'preguntas', 'quiz', 'mcqs', 'data', 'entries', 'terms', 'deck', 'mazo'];
@@ -314,11 +315,12 @@ function jsonDeck(src, fallbackName) {
       let item = it;
       if (Array.isArray(it)) item = { q: it[0], a: it[1], topic: it[2] };
       if (!item || typeof item !== 'object') { bad++; continue; }
-      const kq = keyOf(item, KEYS.q), ko = keyOf(item, KEYS.o), ke = keyOf(item, KEYS.e), kt = keyOf(item, KEYS.topic), ki = keyOf(item, KEYS.img);
+      const kq = keyOf(item, KEYS.q), ko = keyOf(item, KEYS.o), ke = keyOf(item, KEYS.e), kt = keyOf(item, KEYS.topic), ki = keyOf(item, KEYS.img), kqi = keyOf(item, KEYS.qimg);
       const htmlish = s => looksHtml(s) ? htmlToText(s).text : clean(s);
       const q = kq ? htmlish(toText(item[kq])) : '';
       let topic = kt ? toText(Array.isArray(item[kt]) ? item[kt][0] : item[kt]).split('::').pop().trim() : listTopic;
-      const imgs = ki ? [].concat(item[ki]).filter(u => typeof u === 'string' && /^(https?:|data:image\/)/.test(u.trim())).map(u => u.trim()) : [];
+      const imgList = k => k ? [].concat(item[k]).filter(u => typeof u === 'string' && /^(https?:|data:image\/)/.test(u.trim())).map(u => u.trim()) : [];
+      const imgs = imgList(ki), qimgs = imgList(kqi);
       let opts = ko && Array.isArray(item[ko]) ? item[ko] : null;
       if (!opts && ko && item[ko] && typeof item[ko] === 'object') opts = Object.keys(item[ko]).sort().map(k => item[ko][k]); // {A: "...", B: "..."}
       if (opts && opts.length >= 2 && opts.every(o => o == null || typeof o !== 'object' || 'text' in o || 'texto' in o)) {
@@ -330,7 +332,7 @@ function jsonDeck(src, fallbackName) {
         if (k < 0 && kk0 != null) k = parseCorrect(item[kk0], texts, true);
         if (k < 0 && kk != null && kk !== ko) k = parseCorrect(item[kk], texts, typeof item[kk] === 'number');
         if (!q || k < 0 || texts.length > 8 || texts.some(t => !t)) { badMcq++; continue; }
-        d.questions.push({ q, o: texts, k, e: ke ? htmlish(toText(item[ke])) : '', topic, img: imgs });
+        d.questions.push({ q, o: texts, k, e: ke ? htmlish(toText(item[ke])) : '', topic, img: imgs, qimg: qimgs });
         continue;
       }
       const ka = keyOf(item, KEYS.a);
@@ -339,7 +341,7 @@ function jsonDeck(src, fallbackName) {
       if (hasCloze(qq)) { const full = qq; qq = clozeQ(full); a = a ? clozeA(full) + '\n\n' + a : clozeA(full); }
       if (ke && ke !== ka) { const e = htmlish(toText(item[ke])); if (e) a = a ? a + '\n\n' + e : a; }
       if (!qq || !a) { bad++; continue; }
-      d.cards.push({ q: qq, a, topic, img: imgs });
+      d.cards.push({ q: qq, a, topic, img: imgs, qimg: qimgs });
     }
   }
   if (!lists.length) d.warnings.push('No encontré tarjetas en el archivo. Revisa que tenga una lista “cards” con “q” y “a”.');
@@ -350,10 +352,15 @@ function jsonDeck(src, fallbackName) {
 
 // ---------------------------------------------------------------- entrada principal
 // file: File del navegador. loadXLSX: función que carga la librería de Excel sólo cuando hace falta.
-export async function parseFile(file, { loadXLSX } = {}) {
+export async function parseFile(file, { loadXLSX, onProgress } = {}) {
   const ext = (file.name.match(/\.([a-z0-9]+)$/i) || [])[1] || '';
   const e = ext.toLowerCase();
-  if (e === 'apkg' || e === 'colpkg') return { format: 'Anki', decks: [], unsupported: 'Los mazos de Anki (.apkg) todavía no se pueden subir directamente. Mientras tanto, en Anki usa Archivo → Exportar → “Notas en texto plano (.txt)” y sube ese archivo.' };
+  if (e === 'apkg' || e === 'colpkg') {
+    const A = await import('./anki.js'); // el lector de Anki sólo se descarga cuando alguien sube un .apkg
+    const r = await A.parseApkg(A.fileSource(file), file.name, onProgress);
+    r.decks = r.decks.map(finish);
+    return r;
+  }
   if (e === 'xlsx' || e === 'xls' || e === 'ods' || e === 'xlsm') {
     if (!loadXLSX) throw new Error('Excel no disponible');
     const XLSX = await loadXLSX();
@@ -379,14 +386,18 @@ function newSpec(name) { return { name: name || 'Mazo importado', description: '
 function finish(d) {
   const cut = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   let trimmed = 0, lostImgs = 0;
-  const okImg = u => /^(https?:\/\/|data:image\/)/i.test(u);
-  for (const c of [...d.cards, ...d.questions]) { const all = c.img || []; c.img = all.filter(okImg); lostImgs += all.length - c.img.length; }
+  const okImg = u => /^(https?:\/\/|data:image\/|anki-media:)/i.test(u);
+  for (const c of [...d.cards, ...d.questions]) {
+    const all = c.img || [], qa = c.qimg || [];
+    c.qimg = qa.filter(okImg).slice(0, LIMITS.imgs); c.img = all.filter(okImg).filter(u => !c.qimg.includes(u)).slice(0, LIMITS.imgs - c.qimg.length);
+    lostImgs += all.length + qa.length - c.img.length - c.qimg.length;
+  }
   if (lostImgs) d.warnings.push(plural(lostImgs, 'imagen no venía', 'imágenes no venían') + ' dentro del archivo (sólo su nombre) y no se pudo incluir. Puedes agregarlas después editando la tarjeta.');
   const seen = new Set(); let dupes = 0;
   d.cards = d.cards.filter(c => { const key = strip(c.q) + '|' + strip(c.a); if (seen.has(key)) { dupes++; return false; } seen.add(key); return true; });
   d.questions = d.questions.filter(c => { const key = 'mcq|' + strip(c.q) + '|' + c.o.map(strip).join('|'); if (seen.has(key)) { dupes++; return false; } seen.add(key); return true; });
-  for (const c of d.cards) { if (c.q.length > LIMITS.q || c.a.length > LIMITS.a) trimmed++; c.q = cut(c.q, LIMITS.q); c.a = cut(c.a, LIMITS.a); c.img = (c.img || []).slice(0, LIMITS.imgs); }
-  for (const c of d.questions) { if (c.q.length > LIMITS.q) trimmed++; c.q = cut(c.q, LIMITS.q); c.o = c.o.map(o => cut(o, LIMITS.opt)); c.e = cut(c.e, LIMITS.e); c.img = (c.img || []).slice(0, LIMITS.imgs); }
+  for (const c of d.cards) { if (c.q.length > LIMITS.q || c.a.length > LIMITS.a) trimmed++; c.q = cut(c.q, LIMITS.q); c.a = cut(c.a, LIMITS.a); }
+  for (const c of d.questions) { if (c.q.length > LIMITS.q) trimmed++; c.q = cut(c.q, LIMITS.q); c.o = c.o.map(o => cut(o, LIMITS.opt)); c.e = cut(c.e, LIMITS.e); }
   d.name = cut(String(d.name).replace(/\s+/g, ' ').trim() || 'Mazo importado', LIMITS.name);
   d.description = cut(d.description, LIMITS.desc);
   // Temas: en orden de aparición. Si hay más de 300 o son casi uno por tarjeta, no se usan.
@@ -421,7 +432,7 @@ export async function buildExport(meta, cards, topicsMap, imgData) {
   out.questions = [];
   for (const c of sorted) {
     if (c.type === 'mcq') { const q = { q: c.q, options: c.o, correct: String.fromCharCode(65 + c.k) }; if (c.e) q.explanation = c.e; if (tname(c.ch)) q.topic = tname(c.ch); out.questions.push(q); }
-    else { const x = { q: c.q, a: c.a }; if (tname(c.ch)) x.topic = tname(c.ch); const im = await imgs(c.img); if (im.length) x.img = im; out.cards.push(x); }
+    else { const x = { q: c.q, a: c.a }; if (tname(c.ch)) x.topic = tname(c.ch); const qi = c.qi || 0; const qim = await imgs((c.img || []).slice(0, qi)); const im = await imgs((c.img || []).slice(qi)); if (qim.length) x.qimg = qim; if (im.length) x.img = im; out.cards.push(x); }
   }
   if (!out.questions.length) delete out.questions;
   return out;

@@ -107,6 +107,10 @@ function imgEl(id, alt) { const im = el('img', { alt: alt || 'Imagen', loading: 
   const fail = () => { const b = im.closest('.thumb'); if (b) { b.className = 'thumb broken'; b.textContent = 'Imagen no disponible'; } };
   if (IMG[id]) im.src = IMG[id]; else B.getImage(id).then(d => { if (d) { IMG[id] = d; im.src = d; } else fail(); }).catch(fail);
   return im; }
+// Las primeras c.qi imágenes van con la pregunta (p. ej., mazos de Anki con imagen en el frente); el resto, con la respuesta.
+function qiOf(c) { return c.personal ? 0 : Math.max(0, Math.min(c.qi || 0, (c.img || []).length)); }
+function qImgs(c) { return (c.img || []).slice(0, qiOf(c)); }
+function aImgs(c) { return (c.img || []).slice(qiOf(c)); }
 function imgGrid(ids, small) {
   if (!ids || !ids.length) return null;
   const g = el('div', { class: small ? 'rthumbs' : 'imgs' + (ids.length === 1 ? ' one' : '') });
@@ -378,8 +382,8 @@ function renderCards() {
     c.img && c.img.length ? el('span', { class: 'badge teal', text: plural(c.img.length, 'imagen', 'imágenes') }) : null,
     el('span', { text: SRS.stateLabel(s).replace('Para hoy', 'Repaso').replace(/^Repaso en.*/, 'Repaso anticipado') + ' · ' + (CS.cur + 1) + '/' + CS.queue.length }), iconBtn(ICON_EDIT, 'Editar', () => openEdit(c, 'cards')));
   const card = el('div', { class: 'card flip', tabindex: CS.flipped ? null : '0', role: CS.flipped ? null : 'button', 'aria-label': CS.flipped ? null : 'Mostrar respuesta', onclick: () => { if (!CS.flipped) { CS.flipped = true; renderCards(); } } },
-    el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), right), el('div', { class: 'q', text: c.q }),
-    CS.flipped ? el('div', {}, el('div', { class: 'a', text: c.a }), imgGrid(c.img)) : el('div', { class: 'hint', text: 'Piensa la respuesta y toca la tarjeta para verla.' }));
+    el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), right), el('div', { class: 'q', text: c.q }), imgGrid(qImgs(c)),
+    CS.flipped ? el('div', {}, el('div', { class: 'a', text: c.a }), imgGrid(aImgs(c))) : el('div', { class: 'hint', text: 'Piensa la respuesta y toca la tarjeta para verla.' }));
   p.append(el('div', { class: 'progressbar' }, el('i', { style: 'width:' + Math.round(100 * CS.cur / CS.queue.length) + '%' })), card);
   if (CS.flipped) p.append(rateButtons(c, rate));
   else p.append(el('div', { class: 'btnrow' }, el('button', { class: 'b primary', onclick: () => { CS.flipped = true; renderCards(); } }, 'Mostrar respuesta'),
@@ -426,13 +430,13 @@ function renderOpen() {
   if (!OS) newOpen();
   if (!OS.card) { p.append(el('div', { class: 'card empty', text: 'No hay tarjetas aquí todavía.' })); return; }
   const c = OS.card;
-  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), el('span', { text: 'Responde con tus palabras' })), el('div', { class: 'q', text: c.q }));
+  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), el('span', { text: 'Responde con tus palabras' })), el('div', { class: 'q', text: c.q }), imgGrid(qImgs(c)));
   const ta = el('textarea', { id: 'open-ans', placeholder: 'Escribe tu respuesta como la dirías en el examen oral…', 'aria-label': 'Tu respuesta' }); ta.value = OS.answer; ta.addEventListener('input', () => OS.answer = ta.value);
   card.append(ta);
   if (!OS.shown) card.append(el('div', { class: 'btnrow', style: 'margin-top:12px' }, el('button', { class: 'b primary', onclick: () => { OS.shown = true; renderOpen(); } }, 'Comparar con la respuesta'), el('button', { class: 'b', onclick: () => { newOpen(); renderOpen(); } }, 'Otra pregunta')));
   else {
     card.append(el('div', { class: 'expl', style: 'margin-top:14px' }, el('b', { text: 'Respuesta de la tarjeta: ' }), c.a));
-    const g = imgGrid(c.img); if (g) card.append(g);
+    const g = imgGrid(aImgs(c)); if (g) card.append(g);
     if (!OS.rated) card.append(el('p', { class: 'note', style: 'margin-top:12px', text: '¿Cómo te fue? Tu calificación programa el próximo repaso de esta tarjeta.' }), el('div', { style: 'margin-top:8px' }, rateButtons(c, g => { grade(c, g); OS.rated = true; renderOpen(); })));
     card.append(el('div', { class: 'btnrow', style: 'margin-top:12px' }, el('button', { class: OS.rated ? 'b primary' : 'b', onclick: () => { newOpen(); renderOpen(); } }, 'Otra pregunta')));
   }
@@ -520,7 +524,7 @@ async function duplicateDeck(m) {
     const src = list.map(c => { const e = ed.edits[c.id]; return e ? { ...c, q: e.q, a: e.a, img: e.img || [] } : c; }).filter(c => c.q && (c.a || c.type === 'mcq'));
     const data = newDeckData(String(m.name).slice(0, 100) + ' (copia)', { topics: m.topics, description: m.description ? String(m.description).slice(0, 1000) : undefined });
     const { id, code } = await B.createDeck(data); newId = id; newCode = code;
-    const cs = src.map(c => ({ id: c.id, q: String(c.q).slice(0, 5000), a: c.a == null ? undefined : String(c.a).slice(0, 20000), img: (c.img || []).slice(0, 12), ch: c.ch == null ? null : c.ch, type: c.type, o: c.o, k: c.k, e: c.e, created: c.created }));
+    const cs = src.map(c => ({ id: c.id, q: String(c.q).slice(0, 5000), a: c.a == null ? undefined : String(c.a).slice(0, 20000), img: (c.img || []).slice(0, 12), qi: c.qi, ch: c.ch == null ? null : c.ch, type: c.type, o: c.o, k: c.k, e: c.e, created: c.created }));
     const counts = { cards: cs.filter(c => c.type !== 'mcq').length, questions: cs.filter(c => c.type === 'mcq').length };
     await B.addCards(id, cs, counts);
     const prog = await B.getProgress(m.id).catch(() => null); if (prog && prog.cards) await B.setProgress(id, { ...normP(prog), updated: Date.now() });
@@ -616,9 +620,9 @@ function loadXLSX() { // la librería de Excel (≈ 900 KB) sólo se descarga si
 async function pickImportFile(file) {
   if (!file) return;
   if (file.size > 60 * 1024 * 1024) { IM.err = 'El archivo pesa más de 60 MB. Divídelo en partes más pequeñas.'; IM.res = null; renderDecks(); return; }
-  IM.parsing = true; IM.err = ''; IM.res = null; IM.file = file; renderDecks();
+  IM.parsing = true; IM.parseMsg = ''; IM.err = ''; IM.res = null; IM.file = file; IM.withImg = true; renderDecks();
   try {
-    const r = await IMP.parseFile(file, { loadXLSX });
+    const r = await IMP.parseFile(file, { loadXLSX, onProgress: t => { IM.parseMsg = t; if (IM.parsing) renderDecks(); } });
     IM.parsing = false;
     if (r.format === 'claude-app') { IM.open = false; setMode('account'); readImport(file); return; }
     if (r.unsupported) { IM.err = r.unsupported; renderDecks(); return; }
@@ -627,6 +631,7 @@ async function pickImportFile(file) {
     r.decks = usable; IM.res = r; renderDecks();
   } catch (e) { IM.parsing = false; IM.err = 'No se pudo leer el archivo: ' + (e.message || e); renderDecks(); }
 }
+const imgCount = d => [...d.cards, ...d.questions].reduce((n, c) => n + (c.img || []).length + (c.qimg || []).length, 0);
 function download(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type })); const a = el('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
@@ -637,14 +642,14 @@ function importPanel() {
   const fi = el('input', { type: 'file', accept: '.csv,.tsv,.txt,.json,.xlsx,.xls,.ods,.apkg,text/csv,text/plain,application/json', hidden: true, id: 'imp-deck-file' });
   fi.addEventListener('change', () => { const f = fi.files[0]; fi.value = ''; pickImportFile(f); });
   box.append(fi);
-  if (IM.parsing) { box.append(el('p', { class: 'note', style: 'font-size:14px', text: 'Leyendo ' + (IM.file ? '“' + IM.file.name + '”' : 'el archivo') + '…' })); return box; }
+  if (IM.parsing) { box.append(el('p', { class: 'note', style: 'font-size:14px', text: IM.parseMsg || 'Leyendo ' + (IM.file ? '“' + IM.file.name + '”' : 'el archivo') + '…' })); return box; }
   if (!IM.res) {
     box.append(el('h3', { class: 'sec', style: 'margin:0', text: 'Importar un mazo desde un archivo' }),
       el('p', { style: 'margin:0;font-size:14px', text: 'Sube el archivo y MyCards arma el mazo solo: detecta las columnas de pregunta, respuesta y tema, las preguntas de opción múltiple y las tarjetas repetidas. Antes de crearlo verás una vista previa.' }),
       el('ul', { class: 'tips', style: 'margin:0' },
         el('li', { text: 'Excel o Google Sheets (.xlsx o .csv): una fila por tarjeta, con columnas “pregunta”, “respuesta” y, si quieres, “tema”. Si el libro tiene varias hojas, cada hoja queda como un tema.' }),
         el('li', { text: 'Quizlet: en el set, ⋯ → Exportar, copia el texto y guárdalo como archivo .txt.' }),
-        el('li', { text: 'Anki: Archivo → Exportar → “Notas en texto plano (.txt)”. El formato .apkg llegará pronto.' }),
+        el('li', { text: 'Anki (.apkg): el mazo tal cual, con sus imágenes. Los submazos quedan como temas y cada tarjeta se arma con las plantillas del mazo (básicas, invertidas y cloze). También sirve “Notas en texto plano (.txt)”.' }),
         el('li', { text: 'JSON de MyCards: el que descargas con “Exportar” en cualquier mazo, o el que te prepare Claude con las instrucciones de abajo.' })));
     const dz = el('div', { class: 'dropzone' }, el('button', { class: 'b primary', type: 'button', onclick: () => fi.click() }, 'Elegir archivo'),
       el('span', { class: 'note', text: 'En el computador también puedes arrastrar el archivo aquí.' }));
@@ -669,7 +674,7 @@ function importPanel() {
     const dk = el('div', { class: 'deck' });
     const nm = el('input', { type: 'text', maxlength: '100', 'aria-label': 'Nombre del mazo', disabled: IM.busy ? true : null }); nm.value = d.name; nm.addEventListener('input', () => { d.name = nm.value; });
     dk.append(el('div', { class: 'field' }, el('label', { text: many ? 'Mazo ' + (di + 1) + ' de ' + r.decks.length : 'Nombre del mazo' }), nm));
-    const nImg = [...d.cards, ...d.questions].reduce((n, c) => n + (c.img || []).length, 0);
+    const nImg = imgCount(d);
     dk.append(el('div', { class: 'pills' }, el('span', { class: 'pill ok', text: plural(d.cards.length, 'tarjeta', 'tarjetas') }),
       d.questions.length ? el('span', { class: 'pill ok', text: plural(d.questions.length, 'pregunta', 'preguntas') + ' de examen' }) : null,
       el('span', { class: 'pill', text: d.topics.length ? plural(d.topics.length, 'tema', 'temas') : 'Sin temas' }),
@@ -678,6 +683,7 @@ function importPanel() {
     const sample = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
     d.cards.slice(0, 3).forEach(c => sample.append(el('div', { class: 'choice', style: 'cursor:default' }, el('div', { style: 'min-width:0' },
       el('b', { style: 'white-space:pre-line', text: short(c.q, 220) }), el('span', { class: 'note', style: 'white-space:pre-line', text: '→ ' + short(c.a, 260) }),
+      (c.qimg || []).length || (c.img || []).length ? el('span', { class: 'note', text: [(c.qimg || []).length ? plural(c.qimg.length, 'imagen', 'imágenes') + ' en la pregunta' : '', (c.img || []).length ? plural(c.img.length, 'imagen', 'imágenes') + ' en la respuesta' : ''].filter(Boolean).join(' · ') }) : null,
       c.topic ? el('span', { class: 'note', text: 'Tema: ' + c.topic }) : null))));
     d.questions.slice(0, 1).forEach(q => sample.append(el('div', { class: 'choice', style: 'cursor:default' }, el('div', { style: 'min-width:0' },
       el('b', { style: 'white-space:pre-line', text: short(q.q, 220) }),
@@ -687,6 +693,10 @@ function importPanel() {
     for (const w of d.warnings) dk.append(el('p', { class: 'note', style: 'color:var(--warn)', text: w }));
     box.append(dk);
   });
+  const allImgs = r.decks.reduce((n, d) => n + imgCount(d), 0);
+  if (allImgs) { const cb = el('input', { type: 'checkbox', checked: IM.withImg ? true : null, disabled: IM.busy ? true : null, onchange: e => { IM.withImg = e.target.checked; renderDecks(); } });
+    box.append(el('label', { class: 'choice' + (IM.withImg ? ' on' : '') }, cb, el('div', {}, el('b', { text: 'Incluir las imágenes (' + allImgs + ')' }),
+      el('span', { class: 'note', text: allImgs > 300 ? 'Son muchas: subirlas toma tiempo y ocupa espacio del plan gratuito de Firebase (1 GB, unos 100 KB por imagen). Puedes importar sólo el texto y agregar imágenes después.' : 'Se comprimen y se guardan en tu cuenta.' })))); }
   if (total > 4000) box.append(el('p', { class: 'note', style: 'color:var(--warn)', text: 'Son ' + total + ' elementos: la importación usa ' + total + ' de las 20 000 escrituras gratuitas del día de Firebase y puede tardar unos minutos. No cierres la página mientras termina.' }));
   box.append(el('div', { class: 'field' }, el('label', { text: '¿Quién puede ver ' + (many ? 'estos mazos' : 'el mazo') + '?' }), ...visChoices(IM.vis, v => { if (!IM.busy) { IM.vis = v; renderDecks(); } }, 'impvis')));
   if (IM.err) box.append(el('p', { class: 'note', style: 'color:var(--bad);font-size:14px', text: IM.err }));
@@ -698,7 +708,8 @@ function importPanel() {
 }
 async function imageToId(src) { // data: o https:// → imagen comprimida y guardada en Firebase
   let file;
-  if (src.startsWith('data:')) file = await dataUrlToFile(src);
+  if (src.startsWith('anki-media:')) { const b = IM.res && IM.res.media ? await IM.res.media(src) : null; if (!b) throw new Error('img'); file = new File([b], 'img', { type: b.type }); }
+  else if (src.startsWith('data:')) file = await dataUrlToFile(src);
   else { const res = await fetch(src, { mode: 'cors' }); if (!res.ok) throw new Error('img'); const b = await res.blob(); if (!b.type.startsWith('image/')) throw new Error('img'); file = new File([b], 'img', { type: b.type }); }
   const r = await compressImage(file); const id = await B.putImage(r.data, r.w, r.h); IMG[id] = r.data; return id;
 }
@@ -706,17 +717,18 @@ async function runDeckImport() {
   const r = IM.res; if (!r || IM.busy) return;
   for (const d of r.decks) { d.name = String(d.name || '').trim().slice(0, 100); if (!d.name) { IM.err = 'Ponle nombre a cada mazo.'; renderDecks(); return; } }
   IM.err = ''; const set = t => { IM.busy = t; renderDecks(); };
-  const created = []; let lostImgs = 0;
+  const created = []; let lostImgs = 0; const upl = new Map(); // misma imagen en varias tarjetas → se sube una sola vez
   try {
     for (const [di, d] of r.decks.entries()) {
       const pre = r.decks.length > 1 ? 'Mazo ' + (di + 1) + '/' + r.decks.length + ': ' : '';
-      const withImg = [...d.cards, ...d.questions].filter(c => c.img && c.img.length && !c.imgIds);
-      const nImg = withImg.reduce((n, c) => n + c.img.length, 0); let k = 0;
-      for (const c of withImg) { const ids = []; for (const src of c.img) { set(pre + 'subiendo imágenes ' + (++k) + '/' + nImg + '…'); try { ids.push(await imageToId(src)); } catch (e) { lostImgs++; } } c.imgIds = ids; }
+      const withImg = IM.withImg ? [...d.cards, ...d.questions].filter(c => ((c.img || []).length || (c.qimg || []).length) && !c.imgIds) : [];
+      const uniq = new Set(); withImg.forEach(c => [...(c.qimg || []), ...(c.img || [])].forEach(s => uniq.add(s))); let k = 0;
+      const one = async src => { if (upl.has(src)) return upl.get(src); set(pre + 'subiendo imágenes ' + (++k) + '/' + uniq.size + '…'); let id = null; try { id = await imageToId(src); } catch (e) { lostImgs++; } upl.set(src, id); return id; };
+      for (const c of withImg) { const q = [], a = []; for (const s of c.qimg || []) { const id = await one(s); if (id) q.push(id); } for (const s of c.img || []) { const id = await one(s); if (id) a.push(id); } c.imgIds = [...q, ...a]; c.qi = q.length; }
       const topics = {}; d.topics.forEach((t, i) => { topics[i] = t; });
       const ch = t => { const i = d.topics.indexOf(t); return i < 0 ? null : i; };
-      const flash = d.cards.map((c, i) => ({ q: c.q, a: c.a, img: c.imgIds || [], ch: ch(c.topic), created: i + 1 }));
-      const mcq = d.questions.map((q, i) => ({ type: 'mcq', q: q.q, o: q.o, k: q.k, e: q.e || undefined, img: q.imgIds || [], ch: ch(q.topic), created: 200000 + i }));
+      const flash = d.cards.map((c, i) => ({ q: c.q, a: c.a, img: IM.withImg ? c.imgIds || [] : [], qi: IM.withImg && c.qi ? c.qi : undefined, ch: ch(c.topic), created: i + 1 }));
+      const mcq = d.questions.map((q, i) => ({ type: 'mcq', q: q.q, o: q.o, k: q.k, e: q.e || undefined, img: IM.withImg ? q.imgIds || [] : [], qi: IM.withImg && q.qi ? q.qi : undefined, ch: ch(q.topic), created: 200000 + i }));
       set(pre + 'creando el mazo…');
       const data = newDeckData(d.name, { visibility: IM.vis, topics: d.topics.length ? topics : undefined, description: d.description ? d.description.slice(0, 1000) : undefined });
       const res = await B.createDeck(data); created.push(res);
@@ -732,7 +744,8 @@ async function runDeckImport() {
   } catch (e) {
     for (const c of created) B.deleteDeck(c.id, c.code).catch(() => {});
     LISTS.owned = LISTS.owned.filter(d => !created.some(c => c.id === d.id));
-    IM.busy = ''; IM.err = 'La importación se interrumpió y se deshizo: ' + B.errorMessage(e); renderDecks();
+    const needsRules = e && e.code === 'permission-denied' && r.decks.some(d => d.cards.some(c => c.qi));
+    IM.busy = ''; IM.err = 'La importación se interrumpió y se deshizo: ' + (needsRules ? 'faltan las reglas nuevas de Firebase para imágenes en la pregunta. Pega de nuevo firestore.rules en Firebase → Firestore → Reglas → Publicar, o desmarca “Incluir las imágenes”.' : B.errorMessage(e)); renderDecks();
   }
 }
 async function exportDeck(m) {

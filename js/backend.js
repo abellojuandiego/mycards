@@ -133,7 +133,7 @@ B = {
     const now = Date.now();
     await runChunks(cards.map((c, i) => ({ ...c, _t: c.created || now + i })), c => {
       const id = c.id || doc(collection(db, 'decks', deckId, 'cards')).id;
-      const body = strip({ q: c.q, a: c.a, img: c.img && c.img.length ? c.img : undefined, ch: c.ch == null ? undefined : c.ch,
+      const body = strip({ q: c.q, a: c.a, img: c.img && c.img.length ? c.img : undefined, qi: c.qi && c.img && c.img.length ? Math.min(c.qi, c.img.length) : undefined, ch: c.ch == null ? undefined : c.ch,
         type: c.type, o: c.o, k: c.k, e: c.e, by: uid(), created: c._t, updated: now });
       return setDoc(doc(db, 'decks', deckId, 'cards', id), body);
     });
