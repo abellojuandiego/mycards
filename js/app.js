@@ -9,6 +9,22 @@ const ICON_EDIT = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/
 const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_COPY = '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>';
 const $ = id => document.getElementById(id);
+
+// ---------- formato: **negrita** y *cursiva* ----------
+// El texto se guarda plano con marcas tipo Markdown y se muestra creando nodos (nunca innerHTML), así no hay riesgo de inyección.
+const RICH_RE = /\*\*((?:\*[^*\n]+\*|[^*\n])+?)\*\*|\*([^\s*](?:[^*\n]*[^\s*])?)\*/g;
+function rich(text, wrap) {
+  const s = String(text == null ? '' : text), frag = document.createDocumentFragment();
+  const put = t => { if (t) frag.append(wrap ? wrap(t) : t); };
+  const re = new RegExp(RICH_RE.source, 'g'); let pos = 0, m;
+  while ((m = re.exec(s))) {
+    put(s.slice(pos, m.index));
+    frag.append(m[1] != null ? el('strong', {}, rich(m[1], wrap)) : el('em', {}, rich(m[2], wrap)));
+    pos = re.lastIndex;
+  }
+  put(s.slice(pos)); return frag;
+}
+const plainText = t => String(t == null ? '' : t).replace(/\*\*((?:\*[^*\n]+\*|[^*\n])+?)\*\*/g, '$1').replace(/\*([^\s*](?:[^*\n]*[^\s*])?)\*/g, '$1');
 function el(tag, attrs = {}, ...kids) { const e = document.createElement(tag); for (const k in attrs) { const v = attrs[k]; if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'text') e.textContent = v; else if (k === 'html') e.innerHTML = v; else e.setAttribute(k, v === true ? '' : v); } for (const c of kids) if (c != null && c !== false) e.append(c); return e; }
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function iconBtn(svg, label, fn, title) { const b = el('button', { class: 'iconbtn', type: 'button', title, 'aria-label': label ? null : title, onclick: e => { e.stopPropagation(); fn(); } }); b.innerHTML = svg; if (label) b.append(label); return b; }
@@ -178,13 +194,13 @@ function editForm() {
   box.append(el('div', { class: 'meta' }, el('span', { class: 'ch', text: (isNew ? 'Nueva tarjeta · ' : 'Editar tarjeta · ') + CUR.meta.name }),
     E.kind === 'personal' ? el('span', { class: 'badge', text: 'Sólo para ti' }) : null));
   const f = el('div', { class: 'form' });
-  const qa = el('textarea', { id: 'ed-q', style: 'min-height:80px', maxlength: '5000' }); qa.value = E.q; qa.addEventListener('input', () => E.q = qa.value);
-  const aa = el('textarea', { id: 'ed-a', maxlength: '20000' }); aa.value = E.a; aa.addEventListener('input', () => E.a = aa.value);
-  f.append(el('div', { class: 'field' }, el('label', { for: 'ed-q', text: 'Pregunta (anverso)' }), qa));
-  f.append(el('div', { class: 'field' }, el('label', { for: 'ed-a', text: 'Respuesta (reverso)' }), aa));
+  const qa = el('textarea', { id: 'ed-q', style: 'min-height:80px', maxlength: '5000' }); qa.value = E.q;
+  const aa = el('textarea', { id: 'ed-a', maxlength: '20000' }); aa.value = E.a;
+  f.append(el('div', { class: 'field' }, el('label', { for: 'ed-q', text: 'Pregunta (anverso)' }), fmtBar(E, 'q', qa), qa));
+  f.append(el('div', { class: 'field' }, el('label', { for: 'ed-a', text: 'Respuesta (reverso)' }), fmtBar(E, 'a', aa), aa));
   f.append(imgEditor(E));
   if (E.kind === 'remote') f.append(topicField(E));
-  if (E.kind === 'personal' && E.personal) f.append(el('div', { class: 'orig' }, el('b', { text: 'Original: ' }), E.orig.q + ' → ' + E.orig.a));
+  if (E.kind === 'personal' && E.personal) f.append(el('div', { class: 'orig' }, el('b', { text: 'Original: ' }), plainText(E.orig.q) + ' → ' + plainText(E.orig.a)));
   box.append(f);
   const row = el('div', { class: 'btnrow', style: 'margin-top:14px' },
     el('button', { class: 'b primary', type: 'button', onclick: saveEdit, disabled: E.busy ? true : null }, E.busy ? 'Subiendo imagen…' : (isNew ? 'Añadir tarjeta' : 'Guardar cambios')),
@@ -200,6 +216,84 @@ function editForm() {
     : !CUR.isOwner ? 'Estás editando un mazo compartido: los cambios los verán todas las personas que lo usan.' : 'Los cambios se guardan en tu cuenta.';
   box.append(el('p', { class: 'note', style: 'margin-top:10px', text: note }));
   return box;
+}
+// ---------- barra de formato del editor: negrita, cursiva, deshacer, rehacer ----------
+const ICON_UNDO = '<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+const ICON_REDO = '<svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>';
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const KEY = isMac ? '⌘' : 'Ctrl+';
+// El historial vive en EDIT (no en el textarea) para que sobreviva a los re-render del formulario.
+function histOf(E, k, ta) {
+  E.hist = E.hist || {};
+  return E.hist[k] || (E.hist[k] = { stack: [{ v: ta.value, s: ta.value.length, e: ta.value.length }], i: 0, t: 0 });
+}
+function histPush(E, k, ta, force) {
+  const h = histOf(E, k, ta), now = Date.now(), snap = { v: ta.value, s: ta.selectionStart, e: ta.selectionEnd };
+  if (h.stack[h.i].v === snap.v) return;
+  h.stack.length = h.i + 1;
+  // Agrupa lo que se escribe seguido (menos de 0,8 s entre teclas) en un solo paso de deshacer.
+  if (!force && h.i > 0 && now - h.t < 800 && !h.lock) h.stack[h.i] = snap; else { h.stack.push(snap); h.i++; }
+  if (h.stack.length > 200) { h.stack.shift(); h.i--; }
+  h.t = now; h.lock = !!force;
+}
+function histGo(E, k, ta, d) {
+  const h = histOf(E, k, ta); histPush(E, k, ta, true);
+  const j = h.i + d; if (j < 0 || j >= h.stack.length) return;
+  h.i = j; h.lock = true; const st = h.stack[j];
+  ta.value = st.v; E[k] = st.v; ta.focus(); ta.setSelectionRange(st.s, st.e); updBar(E, k);
+}
+function updBar(E, k) {
+  const h = E.hist && E.hist[k], bar = document.querySelector('.fmtbar[data-k="' + k + '"]'); if (!bar) return;
+  const [u, r] = bar.querySelectorAll('.fb-hist');
+  u.disabled = !h || (h.i <= 0 && h.stack[0].v === E[k]); r.disabled = !h || h.i >= h.stack.length - 1;
+}
+// Pone o quita las marcas (** o *) alrededor de lo seleccionado; en selecciones de varias líneas, línea por línea.
+function toggleMark(E, k, ta, kind) {
+  const n = kind === 'b' ? 2 : 1, M = '*'.repeat(n), has = r => kind === 'b' ? r >= 2 : r % 2 === 1;
+  histPush(E, k, ta, true);
+  let v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+  const runL = i => { let c = 0; while (i - 1 - c >= 0 && v[i - 1 - c] === '*') c++; return c; };
+  const runR = i => { let c = 0; while (v[i + c] === '*') c++; return c; };
+  const sel = v.slice(s, e);
+  if (!sel) { // sin selección: marcas vacías con el cursor en medio (o salir de ellas si ya estaban)
+    if (v.slice(s - n, s) === M && v.slice(s, s + n) === M) { v = v.slice(0, s - n) + v.slice(s + n); s = e = s - n; }
+    else { v = v.slice(0, s) + M + M + v.slice(s); s = e = s + n; }
+  } else if (!sel.includes('\n')) {
+    const lead = (sel.match(/^\*+/) || [''])[0].length, trail = (sel.match(/\*+$/) || [''])[0].length;
+    const inner = Math.min(lead, trail), outer = Math.min(runL(s), runR(e));
+    if (sel.length > 2 * n && has(inner)) { v = v.slice(0, s) + sel.slice(n, sel.length - n) + v.slice(e); e -= 2 * n; }
+    else if (has(outer)) { v = v.slice(0, s - n) + sel + v.slice(e + n); s -= n; e -= n; }
+    else { const m = sel.match(/^(\s*)([\s\S]*?)(\s*)$/); v = v.slice(0, s) + m[1] + M + m[2] + M + m[3] + v.slice(e); s += m[1].length; e = s + m[2].length + 2 * n; }
+  } else {
+    const lines = sel.split('\n'), all = lines.filter(l => l.trim()).every(l => { const t = l.trim(); const r = Math.min((t.match(/^\*+/) || [''])[0].length, (t.match(/\*+$/) || [''])[0].length); return t.length > 2 * n && has(r); });
+    const out = lines.map(l => { if (!l.trim()) return l; const m = l.match(/^(\s*)([\s\S]*?)(\s*)$/); return m[1] + (all ? m[2].slice(n, m[2].length - n) : M + m[2] + M) + m[3]; }).join('\n');
+    v = v.slice(0, s) + out + v.slice(e); e = s + out.length;
+  }
+  const max = +ta.getAttribute('maxlength') || Infinity; if (v.length > max) { toast('La tarjeta llegó al límite de caracteres.'); return; }
+  ta.value = v; E[k] = v; ta.focus(); ta.setSelectionRange(s, e); histPush(E, k, ta, true); updBar(E, k);
+}
+function fmtBar(E, k, ta) {
+  histOf(E, k, ta);
+  const btn = (cls, html, title, fn) => { const b = el('button', { class: 'iconbtn fb ' + cls, type: 'button', title, 'aria-label': title, html });
+    b.addEventListener('mousedown', ev => ev.preventDefault()); // no quitarle el foco ni la selección al texto
+    b.addEventListener('click', ev => { ev.preventDefault(); fn(); }); return b; };
+  const bar = el('div', { class: 'fmtbar', role: 'toolbar', 'aria-label': 'Formato del texto', 'data-k': k },
+    btn('fb-b', '<b>B</b>', 'Negrita (' + KEY + 'B)', () => toggleMark(E, k, ta, 'b')),
+    btn('fb-i', '<i>I</i>', 'Cursiva (' + KEY + 'I)', () => toggleMark(E, k, ta, 'i')),
+    el('span', { class: 'fb-sep', 'aria-hidden': 'true' }),
+    btn('fb-hist', ICON_UNDO, 'Deshacer (' + KEY + 'Z)', () => histGo(E, k, ta, -1)),
+    btn('fb-hist', ICON_REDO, 'Rehacer (' + (isMac ? '⇧⌘Z' : 'Ctrl+Y') + ')', () => histGo(E, k, ta, 1)),
+    el('span', { class: 'fb-tip note', text: '**negrita**  *cursiva*' }));
+  ta.addEventListener('input', () => { E[k] = ta.value; histPush(E, k, ta); updBar(E, k); });
+  ta.addEventListener('keydown', ev => {
+    if (!(ev.metaKey || ev.ctrlKey) || ev.altKey) return; const key = ev.key.toLowerCase();
+    if (key === 'b') { ev.preventDefault(); toggleMark(E, k, ta, 'b'); }
+    else if (key === 'i') { ev.preventDefault(); toggleMark(E, k, ta, 'i'); }
+    else if (key === 'z') { ev.preventDefault(); histGo(E, k, ta, ev.shiftKey ? 1 : -1); }
+    else if (key === 'y' && !isMac) { ev.preventDefault(); histGo(E, k, ta, 1); }
+  });
+  setTimeout(() => updBar(E, k), 0);
+  return bar;
 }
 function imgEditor(E) {
   const wrap = el('div', { class: 'field' }, el('label', { text: 'Imágenes de la respuesta' }));
@@ -381,8 +475,8 @@ function renderCards() {
     c.img && c.img.length ? el('span', { class: 'badge teal', text: plural(c.img.length, 'imagen', 'imágenes') }) : null,
     el('span', { text: SRS.stateLabel(s).replace('Para hoy', 'Repaso').replace(/^Repaso en.*/, 'Repaso anticipado') + ' · ' + (CS.cur + 1) + '/' + CS.queue.length }), iconBtn(ICON_EDIT, 'Editar', () => openEdit(c, 'cards')));
   const card = el('div', { class: 'card flip', tabindex: CS.flipped ? null : '0', role: CS.flipped ? null : 'button', 'aria-label': CS.flipped ? null : 'Mostrar respuesta', onclick: () => { if (!CS.flipped) { CS.flipped = true; renderCards(); } } },
-    el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), right), el('div', { class: 'q', text: c.q }), imgGrid(qImgs(c)),
-    CS.flipped ? el('div', {}, el('div', { class: 'a', text: c.a }), imgGrid(aImgs(c))) : el('div', { class: 'hint', text: 'Piensa la respuesta y toca la tarjeta para verla.' }));
+    el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), right), el('div', { class: 'q' }, rich(c.q)), imgGrid(qImgs(c)),
+    CS.flipped ? el('div', {}, el('div', { class: 'a' }, rich(c.a)), imgGrid(aImgs(c))) : el('div', { class: 'hint', text: 'Piensa la respuesta y toca la tarjeta para verla.' }));
   p.append(el('div', { class: 'progressbar' }, el('i', { style: 'width:' + Math.round(100 * CS.cur / CS.queue.length) + '%' })), card);
   if (CS.flipped) p.append(rateButtons(c, rate));
   else p.append(el('div', { class: 'btnrow' }, el('button', { class: 'b primary', onclick: () => { CS.flipped = true; renderCards(); } }, 'Mostrar respuesta'),
@@ -416,7 +510,7 @@ function renderQuiz() {
   const box = el('div', { class: 'opts' });
   q.order.forEach((oi, pos) => { let cls = 'opt'; if (QS.picked !== null) { if (oi === q.k) cls += ' right'; else if (oi === QS.picked) cls += ' wrong'; }
     const b = el('button', { class: cls, onclick: () => pick(oi) }, el('span', { class: 'k', text: 'ABCDEFGH'[pos] }), el('span', { text: q.o[oi] })); if (QS.picked !== null) b.disabled = true; box.append(b); });
-  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: hasTopics() ? topicName(q.ch) : CUR.meta.name }), el('span', { text: 'Pregunta ' + (QS.i + 1) + ' de ' + QS.qs.length })), el('div', { class: 'q', text: q.q }), box);
+  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: hasTopics() ? topicName(q.ch) : CUR.meta.name }), el('span', { text: 'Pregunta ' + (QS.i + 1) + ' de ' + QS.qs.length })), el('div', { class: 'q' }, rich(q.q)), box);
   if (QS.picked !== null) card.append(el('div', { class: 'expl' }, el('b', { text: QS.picked === q.k ? 'Correcto. ' : 'Incorrecto. ' }), q.e || ''));
   p.append(card);
   if (QS.picked !== null) p.append(el('div', { class: 'btnrow' }, el('button', { class: 'b primary', onclick: () => { QS.i++; QS.picked = null; renderQuiz(); } }, QS.i + 1 < QS.qs.length ? 'Siguiente' : 'Ver resultado')));
@@ -429,12 +523,12 @@ function renderOpen() {
   if (!OS) newOpen();
   if (!OS.card) { p.append(el('div', { class: 'card empty', text: 'No hay tarjetas aquí todavía.' })); return; }
   const c = OS.card;
-  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), el('span', { text: 'Responde con tus palabras' })), el('div', { class: 'q', text: c.q }), imgGrid(qImgs(c)));
+  const card = el('div', { class: 'card' }, el('div', { class: 'meta' }, el('span', { class: 'ch', text: cardLabel(c) }), el('span', { text: 'Responde con tus palabras' })), el('div', { class: 'q' }, rich(c.q)), imgGrid(qImgs(c)));
   const ta = el('textarea', { id: 'open-ans', placeholder: 'Escribe tu respuesta como la dirías en el examen oral…', 'aria-label': 'Tu respuesta' }); ta.value = OS.answer; ta.addEventListener('input', () => OS.answer = ta.value);
   card.append(ta);
   if (!OS.shown) card.append(el('div', { class: 'btnrow', style: 'margin-top:12px' }, el('button', { class: 'b primary', onclick: () => { OS.shown = true; renderOpen(); } }, 'Comparar con la respuesta'), el('button', { class: 'b', onclick: () => { newOpen(); renderOpen(); } }, 'Otra pregunta')));
   else {
-    card.append(el('div', { class: 'expl', style: 'margin-top:14px' }, el('b', { text: 'Respuesta de la tarjeta: ' }), c.a));
+    card.append(el('div', { class: 'expl', style: 'margin-top:14px' }, el('b', { text: 'Respuesta de la tarjeta: ' }), rich(c.a)));
     const g = imgGrid(aImgs(c)); if (g) card.append(g);
     if (!OS.rated) card.append(el('p', { class: 'note', style: 'margin-top:12px', text: '¿Cómo te fue? Tu calificación programa el próximo repaso de esta tarjeta.' }), el('div', { style: 'margin-top:8px' }, rateButtons(c, g => { grade(c, g); OS.rated = true; renderOpen(); })));
     card.append(el('div', { class: 'btnrow', style: 'margin-top:12px' }, el('button', { class: OS.rated ? 'b primary' : 'b', onclick: () => { newOpen(); renderOpen(); } }, 'Otra pregunta')));
@@ -682,11 +776,11 @@ function importPanel() {
     if (d.topics.length) dk.append(el('p', { class: 'note', text: 'Temas: ' + d.topics.slice(0, 15).join(' · ') + (d.topics.length > 15 ? ' y ' + (d.topics.length - 15) + ' más' : '') }));
     const sample = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
     d.cards.slice(0, 3).forEach(c => sample.append(el('div', { class: 'choice', style: 'cursor:default' }, el('div', { style: 'min-width:0' },
-      el('b', { style: 'white-space:pre-line', text: short(c.q, 220) }), el('span', { class: 'note', style: 'white-space:pre-line', text: '→ ' + short(c.a, 260) }),
+      el('b', { style: 'white-space:pre-line' }, rich(short(c.q, 220))), el('span', { class: 'note', style: 'white-space:pre-line' }, '→ ', rich(short(c.a, 260))),
       (c.qimg || []).length || (c.img || []).length ? el('span', { class: 'note', text: [(c.qimg || []).length ? plural(c.qimg.length, 'imagen', 'imágenes') + ' en la pregunta' : '', (c.img || []).length ? plural(c.img.length, 'imagen', 'imágenes') + ' en la respuesta' : ''].filter(Boolean).join(' · ') }) : null,
       c.topic ? el('span', { class: 'note', text: 'Tema: ' + c.topic }) : null))));
     d.questions.slice(0, 1).forEach(q => sample.append(el('div', { class: 'choice', style: 'cursor:default' }, el('div', { style: 'min-width:0' },
-      el('b', { style: 'white-space:pre-line', text: short(q.q, 220) }),
+      el('b', { style: 'white-space:pre-line' }, rich(short(q.q, 220))),
       ...q.o.map((o, i) => el('span', { class: 'note', style: i === q.k ? 'color:var(--good);font-weight:700' : null, text: String.fromCharCode(65 + i) + ') ' + short(o, 160) + (i === q.k ? '  ✓ correcta' : '') }))))));
     dk.append(el('p', { class: 'note', text: 'Así se verán las primeras. Revisa que la pregunta y la respuesta no estén al revés:' }), sample);
     for (const n of d.notes) dk.append(el('p', { class: 'note', text: n }));
@@ -900,7 +994,7 @@ async function renderResults() {
     ul.append(el('li', {}, el('div', { class: 'rmeta' }, el('span', { text: label }),
         el('span', { class: 'btnrow', style: 'gap:8px' }, here ? el('span', { class: 'note', text: SRS.stateLabel(P.cards[c.id]) }) : null,
           iconBtn(ICON_EDIT, 'Editar', async () => { if (!here) { await switchDeck(c.deckId); mode = 'search'; } const fresh = deckCards().find(x => x.id === c.id) || c; openEdit(fresh, 'search'); }))),
-      el('div', { class: 'rq' }, highlight(c.q, terms)), el('div', { class: 'ra' }, highlight(c.a || '', terms)), imgGrid(c.img, true))); });
+      el('div', { class: 'rq' }, rich(c.q, t => highlight(t, terms))), el('div', { class: 'ra' }, rich(c.a || '', t => highlight(t, terms))), imgGrid(c.img, true))); });
   box.append(ul);
   if (list.length > 80) box.append(el('p', { class: 'note', text: 'Se muestran las primeras 80. Afina la búsqueda con otra palabra.' }));
 }
