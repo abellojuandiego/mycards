@@ -424,12 +424,32 @@ function grade(c, g) {
   return next;
 }
 function rate(g) {
-  const c = CS.queue[CS.cur]; const next = grade(c, g);
+  const c = CS.queue[CS.cur];
+  // Guarda cómo estaba todo antes de calificar, para poder deshacerlo.
+  CS.undo = CS.undo || [];
+  CS.undo.push({ id: c.id, g, prev: P.cards[c.id] ? { ...P.cards[c.id] } : null, newDay: { ...P.newDay }, queue: CS.queue.slice(), cur: CS.cur, done: CS.done });
+  if (CS.undo.length > 30) CS.undo.shift();
+  const next = grade(c, g);
   if ((next.st === SRS.LEARNING || next.st === SRS.RELEARNING) && next.due <= Date.now() + 20 * MIN) {
     const mins = (next.due - Date.now()) / MIN;
     CS.queue.splice(Math.min(CS.queue.length, mins <= 1.5 ? CS.cur + 4 : CS.queue.length), 0, c);
   }
   CS.done++; CS.cur++; CS.flipped = false; renderCards();
+}
+function undoRate() {
+  const u = CS && CS.undo && CS.undo.pop(); if (!u) return;
+  const map = new Map(deckCards().map(c => [c.id, c]));
+  if (!map.has(u.id)) { toast('Esa tarjeta ya no está en el mazo.'); renderCards(); return; }
+  if (u.prev) P.cards[u.id] = u.prev; else delete P.cards[u.id];
+  P.newDay = u.newDay; saveP();
+  CS.queue = u.queue.filter(c => map.has(c.id)).map(c => map.get(c.id));
+  CS.cur = Math.max(0, CS.queue.findIndex(c => c.id === u.id)); CS.done = u.done; CS.flipped = true;
+  renderCards(); toast('Se deshizo «' + rateName(u.g) + '». Vuelve a calificar la tarjeta.');
+}
+const rateName = g => (RATES.find(r => r[0] === g) || [, ''])[1];
+function undoBtn() {
+  const u = CS && CS.undo && CS.undo[CS.undo.length - 1]; if (!u) return null;
+  return iconBtn(ICON_UNDO, 'Deshacer «' + rateName(u.g) + '»', undoRate, 'Volver a la tarjeta anterior y cambiar la calificación (tecla Z)');
 }
 const RATES = [[SRS.AGAIN, 'Otra vez', 'r0'], [SRS.HARD, 'Difícil', 'r1'], [SRS.GOOD, 'Bien', 'r2'], [SRS.EASY, 'Fácil', 'r3']];
 function rateButtons(card, onRate) {
@@ -455,7 +475,7 @@ function renderCards() {
   p.append(el('div', { class: 'btnrow', style: 'justify-content:space-between' },
     el('div', { class: 'stats' }, el('span', { class: 'stat' }, 'Para repasar: ', el('b', { text: String(due) })), el('span', { class: 'stat' }, 'Nuevas hoy: ', el('b', { text: String(nw) })),
       el('span', { class: 'stat' }, 'Maduras: ', el('b', { text: mature + '/' + total }))),
-    editKind(null) ? iconBtn(ICON_PLUS, 'Nueva tarjeta', () => openEdit(null, 'cards')) : null));
+    el('span', { class: 'btnrow', style: 'gap:8px' }, undoBtn(), editKind(null) ? iconBtn(ICON_PLUS, 'Nueva tarjeta', () => openEdit(null, 'cards')) : null)));
   if (!CS || (CS.cur >= CS.queue.length && CS.done === 0 && !CS.cram)) startCards(false);
   if (CS.cur >= CS.queue.length) {
     const left = newCards().length;
@@ -465,6 +485,7 @@ function renderCards() {
     p.append(el('div', { class: 'card empty' }, el('p', { text: msg }),
       total && (nextDue || (left && !newLeft())) ? el('p', { class: 'note', text: (nextDue ? 'Próximo repaso: ' + fmtWhen(nextDue) + '. ' : '') + (left && !newLeft() ? 'Ya viste tus ' + newPerDay() + ' tarjetas nuevas de hoy en este mazo.' : '') }) : null,
       el('div', { class: 'btnrow', style: 'justify-content:center;margin-top:12px' },
+        CS.undo && CS.undo.length ? el('button', { class: 'b', onclick: undoRate }, '↶ Volver a la anterior') : null,
         total ? el('button', { class: 'b primary', onclick: () => { startCards(false); renderCards(); } }, 'Buscar pendientes') : (editKind(null) ? el('button', { class: 'b primary', onclick: () => openEdit(null, 'cards') }, 'Nueva tarjeta') : null),
         total && left && !newLeft() ? el('button', { class: 'b', onclick: () => { P.newDay = { d: today(), n: newSeenToday() - 10 }; saveP(); startCards(false); renderCards(); } }, '+10 nuevas hoy') : null,
         total ? el('button', { class: 'b', onclick: () => { startCards(true); renderCards(); } }, 'Repaso libre') : null)));
@@ -482,7 +503,7 @@ function renderCards() {
   else p.append(el('div', { class: 'btnrow' }, el('button', { class: 'b primary', onclick: () => { CS.flipped = true; renderCards(); } }, 'Mostrar respuesta'),
     !CS.cram ? el('button', { class: 'b', onclick: () => { startCards(true); renderCards(); } }, 'Repaso libre') : el('button', { class: 'b', onclick: () => { startCards(false); renderCards(); } }, 'Volver a pendientes')));
   if (CS.cram) p.append(el('p', { class: 'note', text: CS.fromSearch ? 'Estás repasando los resultados de una búsqueda. Tus calificaciones también ajustan la programación.' : 'Repaso libre: tarjetas al azar, aunque no les toque. Tus calificaciones también ajustan la programación.' }));
-  p.append(el('p', { class: 'note hide-touch', text: 'Atajos: Espacio para voltear, 1-4 para calificar (Otra vez, Difícil, Bien, Fácil), E para editar.' }));
+  p.append(el('p', { class: 'note hide-touch', text: 'Atajos: Espacio para voltear, 1-4 para calificar (Otra vez, Difícil, Bien, Fácil), Z para deshacer la última, E para editar.' }));
 }
 
 // ---------- examen (preguntas de opción múltiple del mazo) ----------
@@ -1191,7 +1212,9 @@ async function submitAuth() {
 // ---------- teclado ----------
 document.addEventListener('keydown', e => {
   if (LB) { if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); } return; }
-  const tg = e.target.tagName; if (!USER || !CUR || tg === 'TEXTAREA' || tg === 'SELECT' || tg === 'INPUT' || e.altKey || e.ctrlKey || e.metaKey || EDIT || SHARE) return;
+  const tg = e.target.tagName;
+  if (USER && CUR && mode === 'cards' && CS && !EDIT && !SHARE && tg !== 'TEXTAREA' && tg !== 'INPUT' && tg !== 'SELECT' && !e.altKey && e.key.toLowerCase() === 'z' && !e.shiftKey && CS.undo && CS.undo.length) { e.preventDefault(); undoRate(); return; }
+  if (!USER || !CUR || tg === 'TEXTAREA' || tg === 'SELECT' || tg === 'INPUT' || e.altKey || e.ctrlKey || e.metaKey || EDIT || SHARE) return;
   if (mode === 'cards' && CS && CS.cur < CS.queue.length) {
     if (e.key === ' ' || e.key === 'Enter') { if (!CS.flipped) { e.preventDefault(); CS.flipped = true; renderCards(); } }
     else if (CS.flipped && ['1', '2', '3', '4'].includes(e.key)) rate(+e.key);
